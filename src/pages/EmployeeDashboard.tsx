@@ -15,63 +15,161 @@ import {
   ChevronRight,
   ArrowLeft
 } from 'lucide-react';
-import { mockEmployees } from '@/data/mockEmployees';
 import { Employee } from '@/types/employee';
 import { HRPolicyViewer } from '@/components/HRPolicyViewer';
+import { supabase } from '@/integrations/supabase/client';
 
-// Generate mock attendance data for a month
-const generateMonthlyData = (year: number, month: number) => {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const data = [];
-  const today = new Date();
-  
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month, day);
-    const isWeekend = date.getDay() === 5 || date.getDay() === 6; // Friday & Saturday are weekends
-    const isFuture = date > today;
-    const isToday = date.toDateString() === today.toDateString();
-    
-    if (isWeekend) {
-      data.push({ day, status: 'weekend', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-    } else if (isFuture) {
-      data.push({ day, status: 'future', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-    } else if (isToday) {
-      data.push({ day, status: 'present', checkIn: '09:05 AM', checkOut: null, isLate: true, isToday, isFuture });
-    } else {
-      // Random past data
-      const rand = Math.random();
-      if (rand > 0.9) {
-        data.push({ day, status: 'absent', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-      } else if (rand > 0.7) {
-        data.push({ day, status: 'present', checkIn: '09:15 AM', checkOut: '06:00 PM', isLate: true, isToday, isFuture });
-      } else {
-        data.push({ day, status: 'present', checkIn: '08:55 AM', checkOut: '05:45 PM', isLate: false, isToday, isFuture });
-      }
-    }
-  }
-  return data;
-};
+interface DayData {
+  day: number;
+  status: 'present' | 'absent' | 'weekend' | 'future';
+  checkIn: string | null;
+  checkOut: string | null;
+  isLate: boolean;
+  isToday: boolean;
+  isFuture: boolean;
+}
 
 const EmployeeDashboard: React.FC = () => {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [monthlyData, setMonthlyData] = useState<DayData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Fetch employee from database
   useEffect(() => {
-    const employeeId = sessionStorage.getItem('currentEmployeeId');
-    if (!employeeId) {
-      navigate('/employee');
-      return;
-    }
+    const fetchEmployee = async () => {
+      const employeeId = sessionStorage.getItem('currentEmployeeId');
+      if (!employeeId) {
+        navigate('/employee');
+        return;
+      }
+      
+      const searchId = employeeId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
+      const { data: employees, error } = await supabase
+        .from('employees')
+        .select('*');
+      
+      if (error) {
+        console.error('Error fetching employee:', error);
+        navigate('/employee');
+        return;
+      }
+      
+      const found = employees?.find(emp => {
+        const normalizedEmpId = emp.employee_id.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return normalizedEmpId === searchId;
+      });
+      
+      if (found) {
+        // Get today's attendance
+        const today = new Date().toISOString().split('T')[0];
+        const { data: attendance } = await supabase
+          .from('attendance_records')
+          .select('*')
+          .eq('employee_id', found.id)
+          .eq('date', today)
+          .maybeSingle();
+        
+        const mappedEmployee: Employee = {
+          id: found.id,
+          employeeId: found.employee_id,
+          name: found.name,
+          email: found.email,
+          department: found.department,
+          avatar: found.avatar_url ?? undefined,
+          status: attendance?.check_out_time 
+            ? 'checked-out' 
+            : attendance?.check_in_time 
+              ? 'checked-in' 
+              : 'absent',
+          checkInTime: attendance?.check_in_time 
+            ? new Date(attendance.check_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : undefined,
+          checkOutTime: attendance?.check_out_time
+            ? new Date(attendance.check_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : undefined,
+          workStartTime: found.work_start_time,
+          workEndTime: found.work_end_time,
+          workingHoursPerDay: found.working_hours_per_day,
+          lateThresholdMinutes: found.late_threshold_minutes,
+        };
+        
+        setEmployee(mappedEmployee);
+      } else {
+        navigate('/employee');
+      }
+      setIsLoading(false);
+    };
     
-    const found = mockEmployees.find(emp => emp.employeeId === employeeId);
-    if (found) {
-      setEmployee(found);
-    } else {
-      navigate('/employee');
-    }
+    fetchEmployee();
   }, [navigate]);
+
+  // Fetch attendance records for selected month
+  useEffect(() => {
+    const fetchMonthlyData = async () => {
+      if (!employee) return;
+      
+      const year = selectedMonth.getFullYear();
+      const month = selectedMonth.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const today = new Date();
+      
+      // Fetch attendance records for the month
+      const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${daysInMonth}`;
+      
+      const { data: records } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('employee_id', employee.id)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      
+      const recordMap = new Map(records?.map(r => [r.date, r]) || []);
+      
+      const data: DayData[] = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const isWeekend = date.getDay() === 5 || date.getDay() === 6; // Friday & Saturday are weekends
+        const isFuture = date > today;
+        const isToday = date.toDateString() === today.toDateString();
+        
+        const record = recordMap.get(dateStr);
+        
+        if (isWeekend) {
+          data.push({ day, status: 'weekend', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+        } else if (isFuture) {
+          data.push({ day, status: 'future', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+        } else if (record) {
+          const checkInTime = record.check_in_time 
+            ? new Date(record.check_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : null;
+          const checkOutTime = record.check_out_time
+            ? new Date(record.check_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            : null;
+          data.push({ 
+            day, 
+            status: 'present', 
+            checkIn: checkInTime, 
+            checkOut: checkOutTime, 
+            isLate: record.is_late, 
+            isToday, 
+            isFuture 
+          });
+        } else {
+          data.push({ day, status: 'absent', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+        }
+      }
+      
+      setMonthlyData(data);
+    };
+    
+    fetchMonthlyData();
+  }, [employee, selectedMonth]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
@@ -83,8 +181,6 @@ const EmployeeDashboard: React.FC = () => {
     navigate('/employee');
   };
 
-  const monthlyData = generateMonthlyData(selectedMonth.getFullYear(), selectedMonth.getMonth());
-  
   const stats = {
     present: monthlyData.filter(d => d.status === 'present').length,
     absent: monthlyData.filter(d => d.status === 'absent').length,
@@ -103,8 +199,15 @@ const EmployeeDashboard: React.FC = () => {
     }
   };
 
-  if (!employee) {
-    return null;
+  if (isLoading || !employee) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-muted-foreground text-sm">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri*', 'Sat*']; // * = Weekend
