@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,7 +23,6 @@ import { Employee } from '@/types/employee';
 import { HRPolicyViewer } from '@/components/HRPolicyViewer';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { FaceCapture } from '@/components/FaceCapture';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
 import {
   Dialog,
@@ -31,6 +30,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+// Lazy load FaceCapture to reduce initial bundle (includes heavy face-api.js)
+const FaceCapture = lazy(() => import('@/components/FaceCapture').then(m => ({ default: m.FaceCapture })));
 
 interface DayData {
   day: number;
@@ -914,13 +916,19 @@ const EmployeeDashboard: React.FC = () => {
             </DialogTitle>
           </DialogHeader>
           {showFaceVerification && employee?.faceDescriptor && (
-            <FaceCapture
-              mode="verify"
-              existingDescriptors={employee.faceDescriptor}
-              onCapture={() => {}} // Not used in verify mode
-              onVerified={handleFaceVerified}
-              onCancel={cancelVerification}
-            />
+            <Suspense fallback={
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            }>
+              <FaceCapture
+                mode="verify"
+                existingDescriptors={employee.faceDescriptor}
+                onCapture={() => {}} // Not used in verify mode
+                onVerified={handleFaceVerified}
+                onCancel={cancelVerification}
+              />
+            </Suspense>
           )}
         </DialogContent>
       </Dialog>

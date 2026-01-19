@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee } from '@/types/employee';
-import { FaceCapture } from '@/components/FaceCapture';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
 import {
   Dialog,
@@ -31,6 +30,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+// Lazy load FaceCapture to reduce initial bundle (includes heavy face-api.js)
+const FaceCapture = lazy(() => import('@/components/FaceCapture').then(m => ({ default: m.FaceCapture })));
 
 const EmployeeLogin: React.FC = () => {
   const [employeeId, setEmployeeId] = useState('');
@@ -598,13 +600,19 @@ const EmployeeLogin: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           {currentEmployee?.faceDescriptor && currentEmployee.faceDescriptor.length > 0 && (
-            <FaceCapture
-              mode="verify"
-              existingDescriptors={currentEmployee.faceDescriptor}
-              onCapture={() => {}}
-              onVerified={handleFaceVerified}
-              onCancel={cancelVerification}
-            />
+            <Suspense fallback={
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            }>
+              <FaceCapture
+                mode="verify"
+                existingDescriptors={currentEmployee.faceDescriptor}
+                onCapture={() => {}}
+                onVerified={handleFaceVerified}
+                onCancel={cancelVerification}
+              />
+            </Suspense>
           )}
         </DialogContent>
       </Dialog>
