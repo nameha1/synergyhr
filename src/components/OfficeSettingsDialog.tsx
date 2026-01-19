@@ -119,15 +119,24 @@ export const OfficeSettingsDialog = () => {
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Update IP settings
+      // Update IP settings using upsert to handle both insert and update
       const { error: ipError } = await supabase
         .from('office_settings')
-        .update({ setting_value: allowedIps })
-        .eq('setting_key', 'allowed_ips');
+        .upsert(
+          { 
+            setting_key: 'allowed_ips', 
+            setting_value: allowedIps,
+            description: 'List of allowed IP addresses for check-in/out. Use * to allow all.'
+          },
+          { onConflict: 'setting_key' }
+        );
 
-      if (ipError) throw ipError;
+      if (ipError) {
+        console.error('IP settings error:', ipError);
+        throw ipError;
+      }
 
-      // Update location settings
+      // Update location settings using upsert
       const locationValue = {
         latitude: parseFloat(latitude) || 0,
         longitude: parseFloat(longitude) || 0,
@@ -137,16 +146,25 @@ export const OfficeSettingsDialog = () => {
 
       const { error: locError } = await supabase
         .from('office_settings')
-        .update({ setting_value: locationValue as any })
-        .eq('setting_key', 'office_location');
+        .upsert(
+          { 
+            setting_key: 'office_location', 
+            setting_value: locationValue as any,
+            description: 'Office geo-location settings for check-in/out'
+          },
+          { onConflict: 'setting_key' }
+        );
 
-      if (locError) throw locError;
+      if (locError) {
+        console.error('Location settings error:', locError);
+        throw locError;
+      }
 
       toast.success('Office settings updated');
       setOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating settings:', error);
-      toast.error('Failed to update settings');
+      toast.error(error?.message || 'Failed to update settings');
     } finally {
       setIsSubmitting(false);
     }
