@@ -1,18 +1,100 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Users, UserCheck, UserX, Clock } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { StatsCard } from '@/components/StatsCard';
 import { EmployeeCard } from '@/components/EmployeeCard';
 import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
 import { SearchFilter } from '@/components/SearchFilter';
-import { mockEmployees } from '@/data/mockEmployees';
+import { supabase } from '@/integrations/supabase/client';
 import { Employee, AttendanceStats } from '@/types/employee';
+import { toast } from 'sonner';
+
+// Map database employee to frontend Employee type
+const mapDbEmployee = (dbEmployee: any): Employee => ({
+  id: dbEmployee.id,
+  employeeId: dbEmployee.employee_id,
+  name: dbEmployee.name,
+  email: dbEmployee.email,
+  department: dbEmployee.department,
+  avatar: dbEmployee.avatar_url,
+  status: 'absent', // Will be updated based on today's attendance
+  workStartTime: dbEmployee.work_start_time,
+  workEndTime: dbEmployee.work_end_time,
+  workingHoursPerDay: dbEmployee.working_hours_per_day,
+  lateThresholdMinutes: dbEmployee.late_threshold_minutes,
+});
 
 const Index = () => {
-  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+
+  const fetchEmployees = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Fetch employees
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('employees')
+        .select('*')
+        .order('name');
+
+      if (employeesError) throw employeesError;
+
+      // Fetch today's attendance
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('date', today);
+
+      if (attendanceError) throw attendanceError;
+
+      // Map attendance to employees
+      const attendanceMap = new Map(
+        attendanceData?.map((a) => [a.employee_id, a]) || []
+      );
+
+      const mappedEmployees = employeesData?.map((emp) => {
+        const attendance = attendanceMap.get(emp.id);
+        const employee = mapDbEmployee(emp);
+        
+        if (attendance) {
+          if (attendance.check_out_time) {
+            employee.status = 'checked-out';
+            employee.checkOutTime = new Date(attendance.check_out_time).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            });
+          } else if (attendance.check_in_time) {
+            employee.status = 'checked-in';
+          }
+          if (attendance.check_in_time) {
+            employee.checkInTime = new Date(attendance.check_in_time).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            });
+          }
+        }
+        
+        return employee;
+      }) || [];
+
+      setEmployees(mappedEmployees);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      toast.error('Failed to load employees');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
 
   const departments = useMemo(() => {
     return [...new Set(employees.map((emp) => emp.department))];
@@ -38,55 +120,77 @@ const Index = () => {
     });
   }, [employees, searchQuery, statusFilter, departmentFilter]);
 
-  const handleCheckIn = (id: string) => {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-    setEmployees((prev) =>
-      prev.map((emp) =>
-        emp.id === id
-          ? { ...emp, status: 'checked-in' as const, checkInTime: timeString, checkOutTime: undefined }
-          : emp
-      )
-    );
+  const handleCheckIn = async (id: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+    const employee = employees.find((e) => e.id === id);
+    
+    if (!employee) return;
+
+    // Check if late
+    const workStart = employee.workStartTime || '09:00:00';
+    const lateThreshold = employee.lateThresholdMinutes || 15;
+    const [hours, minutes] = workStart.split(':').map(Number);
+    const startTime = new Date();
+    startTime.setHours(hours, minutes + lateThreshold, 0, 0);
+    const isLate = new Date() > startTime;
+
+    try {
+      const { error } = await supabase.from('attendance_records').upsert({
+        employee_id: id,
+        date: today,
+        check_in_time: now,
+        status: isLate ? 'late' : 'present',
+        is_late: isLate,
+      });
+
+      if (error) throw error;
+
+      toast.success(isLate ? 'Checked in (Late)' : 'Checked in successfully');
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error checking in:', error);
+      toast.error('Failed to check in');
+    }
   };
 
-  const handleCheckOut = (id: string) => {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-    setEmployees((prev) =>
-      prev.map((emp) =>
-        emp.id === id
-          ? { ...emp, status: 'checked-out' as const, checkOutTime: timeString }
-          : emp
-      )
-    );
+  const handleCheckOut = async (id: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+
+    try {
+      const { error } = await supabase
+        .from('attendance_records')
+        .update({ check_out_time: now })
+        .eq('employee_id', id)
+        .eq('date', today);
+
+      if (error) throw error;
+
+      toast.success('Checked out successfully');
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error checking out:', error);
+      toast.error('Failed to check out');
+    }
   };
 
-  const handleAddEmployee = (newEmployee: {
-    name: string;
-    email: string;
-    department: string;
-    employeeId: string;
-  }) => {
-    const employee: Employee = {
-      id: Date.now().toString(),
-      ...newEmployee,
-      status: 'absent',
-    };
-    setEmployees((prev) => [...prev, employee]);
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header isConnected={true} ipAddress="Connected" />
+        <main className="container mx-auto px-4 py-6 max-w-6xl">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      <Header isConnected={true} ipAddress="192.168.1.100" />
+      <Header isConnected={true} ipAddress="Connected" />
 
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         {/* Stats Section */}
@@ -126,7 +230,7 @@ const Index = () => {
                 {filteredEmployees.length} of {employees.length} employees
               </p>
             </div>
-            <AddEmployeeDialog onAdd={handleAddEmployee} />
+            <AddEmployeeDialog onAdd={fetchEmployees} />
           </div>
 
           <SearchFilter
@@ -146,6 +250,7 @@ const Index = () => {
                   employee={employee}
                   onCheckIn={handleCheckIn}
                   onCheckOut={handleCheckOut}
+                  onScheduleUpdate={fetchEmployees}
                 />
               </div>
             ))}
