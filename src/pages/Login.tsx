@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -15,32 +15,26 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
-        toast({
-          title: "Welcome back!",
+      const result = await login(email, password);
+      if (result.success) {
+        toast.success("Welcome back!", {
           description: "You've successfully logged in.",
         });
         navigate('/');
       } else {
-        toast({
-          title: "Login failed",
-          description: "Please check your credentials and try again.",
-          variant: "destructive",
+        toast.error("Login failed", {
+          description: result.error || "Please check your credentials and try again.",
         });
       }
     } catch (error) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: "An unexpected error occurred.",
-        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -125,10 +119,10 @@ const Login: React.FC = () => {
               </Button>
             </form>
 
-            {/* Demo hint */}
+            {/* Info */}
             <div className="mt-6 p-3 rounded-lg bg-muted/50 border border-border/50">
               <p className="text-xs text-muted-foreground text-center">
-                <span className="font-medium">Demo mode:</span> Use any email and password (min 6 chars) to sign in
+                <span className="font-medium">Note:</span> Only users with admin role can access this portal
               </p>
             </div>
           </CardContent>
@@ -147,7 +141,7 @@ const Login: React.FC = () => {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Protected by office IP authentication
+          Protected by Supabase authentication
         </p>
       </div>
     </div>

@@ -9,11 +9,11 @@ interface HeaderProps {
 }
 
 export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
-  const { logout, adminEmail } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -44,9 +44,9 @@ export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
             )}
           </div>
 
-          {adminEmail && (
+          {user && (
             <div className="flex items-center gap-2 pl-3 border-l border-border">
-              <span className="text-sm text-muted-foreground">{adminEmail}</span>
+              <span className="text-sm text-muted-foreground">{user.email}</span>
               <Button
                 variant="ghost"
                 size="sm"
