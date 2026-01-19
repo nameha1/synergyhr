@@ -32,9 +32,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  
+
   // Track if we just logged in (to skip redundant admin check in onAuthStateChange)
   const justLoggedIn = useRef(false);
+
+  const isAbortLikeError = (err: any) => {
+    const msg = String(err?.message ?? '').toLowerCase();
+    return (
+      err?.name === 'AbortError' ||
+      msg.includes('aborterror') ||
+      msg.includes('signal is aborted') ||
+      msg.includes('aborted without reason') ||
+      msg.includes('the operation was aborted')
+    );
+  };
 
   const checkAdminRole = async (userId: string) => {
     try {
@@ -44,10 +55,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .eq('user_id', userId)
         .eq('role', 'admin')
         .maybeSingle();
-      
+
       if (error) {
-        // Ignore abort errors
-        if (error.message?.includes('AbortError') || error.code === '') {
+        // Ignore abort errors (these can happen during navigation / route changes)
+        if (isAbortLikeError(error) || error.code === '') {
           console.log('Admin check request was aborted (likely due to navigation)');
           return null; // Return null to indicate we couldn't check
         }
@@ -57,7 +68,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return !!data;
     } catch (error: any) {
       // Ignore abort errors
-      if (error?.name === 'AbortError' || error?.message?.includes('AbortError')) {
+      if (isAbortLikeError(error)) {
         console.log('Admin check request was aborted (likely due to navigation)');
         return null;
       }
@@ -72,14 +83,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Auth state changed:', event, session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         // Skip admin check while login() is verifying admin role; it will finalize loading/isAdmin.
         if (justLoggedIn.current) {
           console.log('Skipping admin check - login in progress');
           return;
         }
-        
+
         // For other auth state changes (like page reload), check admin status
         const adminStatus = await checkAdminRole(session.user.id);
         if (adminStatus !== null) {
@@ -88,25 +99,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         setIsAdmin(false);
       }
-      
+
       setLoading(false);
     });
 
     // Check initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log('Initial session check:', session?.user?.id);
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const adminStatus = await checkAdminRole(session.user.id);
-        if (adminStatus !== null) {
-          setIsAdmin(adminStatus);
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session } }) => {
+        console.log('Initial session check:', session?.user?.id);
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          const adminStatus = await checkAdminRole(session.user.id);
+          if (adminStatus !== null) {
+            setIsAdmin(adminStatus);
+          }
         }
-      }
-      
-      setLoading(false);
-    });
+
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (isAbortLikeError(err)) return;
+        console.error('Initial session check failed:', err);
+        setLoading(false);
+      });
 
     return () => subscription.unsubscribe();
   }, []);
@@ -167,6 +185,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { success: true };
     } catch (error: any) {
       finish();
+      if (isAbortLikeError(error)) {
+        return { success: false, error: 'Request was interrupted. Please try again.' };
+      }
       return { success: false, error: error.message };
     }
   };
