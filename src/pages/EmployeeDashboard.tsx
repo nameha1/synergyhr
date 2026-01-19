@@ -14,11 +14,17 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
-  X
+  X,
+  LogIn,
+  Camera,
+  Loader2
 } from 'lucide-react';
 import { Employee } from '@/types/employee';
 import { HRPolicyViewer } from '@/components/HRPolicyViewer';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { FaceCapture } from '@/components/FaceCapture';
+import { useLocationVerification } from '@/hooks/useLocationVerification';
 import {
   Dialog,
   DialogContent,
@@ -45,7 +51,18 @@ const EmployeeDashboard: React.FC = () => {
   const [monthlyData, setMonthlyData] = useState<DayData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
+  const [showFaceVerification, setShowFaceVerification] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'checkin' | 'checkout' | null>(null);
+  const [verificationStep, setVerificationStep] = useState<'face' | 'location' | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const {
+    isVerifying: isVerifyingLocation,
+    verifyLocation,
+    reset: resetLocation,
+  } = useLocationVerification();
 
   // Fetch employee from database
   useEffect(() => {
@@ -105,6 +122,7 @@ const EmployeeDashboard: React.FC = () => {
           workEndTime: found.work_end_time,
           workingHoursPerDay: found.working_hours_per_day,
           lateThresholdMinutes: found.late_threshold_minutes,
+          faceDescriptor: found.face_descriptor as number[][] | null,
         };
         
         setEmployee(mappedEmployee);
@@ -241,6 +259,159 @@ const EmployeeDashboard: React.FC = () => {
     navigate('/employee');
   };
 
+  // Check-in/Check-out handlers
+  const performCheckIn = async () => {
+    if (!employee) return;
+    
+    setIsProcessing(true);
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+    
+    // Check if late
+    const workStart = employee.workStartTime || '09:00:00';
+    const lateThreshold = employee.lateThresholdMinutes || 15;
+    const [hours, minutes] = workStart.split(':').map(Number);
+    const startTime = new Date();
+    startTime.setHours(hours, minutes + lateThreshold, 0, 0);
+    const isLate = new Date() > startTime;
+
+    try {
+      const { error } = await supabase.from('attendance_records').upsert({
+        employee_id: employee.id,
+        date: today,
+        check_in_time: now,
+        status: isLate ? 'late' : 'present',
+        is_late: isLate,
+      });
+
+      if (error) throw error;
+
+      setEmployee({
+        ...employee,
+        status: 'checked-in',
+        checkInTime: currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      });
+      
+      toast({
+        title: isLate ? "Checked In (Late)" : "Checked In Successfully!",
+        description: `Welcome to work at ${currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+      });
+    } catch (error) {
+      console.error('Error checking in:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check in. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const performCheckOut = async () => {
+    if (!employee) return;
+    
+    setIsProcessing(true);
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+
+    try {
+      const { error } = await supabase
+        .from('attendance_records')
+        .update({ check_out_time: now })
+        .eq('employee_id', employee.id)
+        .eq('date', today);
+
+      if (error) throw error;
+
+      setEmployee({
+        ...employee,
+        status: 'checked-out',
+        checkOutTime: currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      });
+      
+      toast({
+        title: "Checked Out Successfully!",
+        description: `See you tomorrow! Checked out at ${currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+      });
+    } catch (error) {
+      console.error('Error checking out:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check out. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Start verification flow for check-in/check-out
+  const startAttendanceAction = (action: 'checkin' | 'checkout') => {
+    if (!employee) return;
+    
+    setPendingAction(action);
+    resetLocation();
+    
+    // If employee has face data, start with face verification
+    if (employee.faceDescriptor && employee.faceDescriptor.length > 0) {
+      setVerificationStep('face');
+      setShowFaceVerification(true);
+    } else {
+      // No face data, go directly to location verification
+      setVerificationStep('location');
+      performLocationVerification(action);
+    }
+  };
+
+  const handleFaceVerified = async (match: boolean, distance: number) => {
+    if (match) {
+      setShowFaceVerification(false);
+      
+      if (pendingAction === 'checkin' || pendingAction === 'checkout') {
+        // Check-in/out needs location verification too
+        setVerificationStep('location');
+        await performLocationVerification(pendingAction);
+      }
+    } else {
+      toast({
+        title: "Face Verification Failed",
+        description: "Your face does not match our records. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const performLocationVerification = async (action: 'checkin' | 'checkout') => {
+    const result = await verifyLocation();
+    
+    if (result.success) {
+      // Location verified, perform the action
+      if (action === 'checkin') {
+        await performCheckIn();
+      } else {
+        await performCheckOut();
+      }
+      setPendingAction(null);
+      setVerificationStep(null);
+    } else {
+      toast({
+        title: "Location Verification Failed",
+        description: result.error || "You must be at the office to check in/out.",
+        variant: "destructive",
+      });
+      setPendingAction(null);
+      setVerificationStep(null);
+    }
+  };
+
+  const cancelVerification = () => {
+    setShowFaceVerification(false);
+    setPendingAction(null);
+    setVerificationStep(null);
+    resetLocation();
+  };
+
   const stats = {
     present: monthlyData.filter(d => d.status === 'present').length,
     absent: monthlyData.filter(d => d.status === 'absent').length,
@@ -308,46 +479,106 @@ const EmployeeDashboard: React.FC = () => {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 space-y-4">
-        {/* Current Status Card */}
+        {/* Current Status Card with Check-in/Check-out */}
         <Card className="border-border/50">
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Today's Status</p>
-                <div className="flex items-center gap-2">
-                  <Badge className={
-                    employee.status === 'checked-in' 
-                      ? 'bg-accent text-accent-foreground' 
-                      : 'bg-muted text-muted-foreground'
-                  }>
-                    {employee.status === 'checked-in' ? (
-                      <>
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Checked In
-                      </>
-                    ) : (
-                      <>
-                        <XCircle className="w-3 h-3 mr-1" />
-                        Not Checked In
-                      </>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Today's Status</p>
+                  <div className="flex items-center gap-2">
+                    <Badge className={
+                      employee.status === 'checked-in' 
+                        ? 'bg-accent text-accent-foreground' 
+                        : employee.status === 'checked-out'
+                        ? 'bg-muted text-muted-foreground'
+                        : 'bg-muted text-muted-foreground'
+                    }>
+                      {employee.status === 'checked-in' ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Checked In
+                        </>
+                      ) : employee.status === 'checked-out' ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Checked Out
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3 h-3 mr-1" />
+                          Not Checked In
+                        </>
+                      )}
+                    </Badge>
+                    {employee.checkInTime && (
+                      <span className="text-sm text-muted-foreground">
+                        In: {employee.checkInTime}
+                      </span>
                     )}
-                  </Badge>
-                  {employee.checkInTime && (
-                    <span className="text-sm text-muted-foreground">
-                      at {employee.checkInTime}
-                    </span>
+                    {employee.checkOutTime && (
+                      <span className="text-sm text-muted-foreground">
+                        Out: {employee.checkOutTime}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-xs">Now</span>
+                  </div>
+                  <p className="text-lg font-mono font-semibold text-foreground">
+                    {currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Check-in/Check-out Button */}
+              {employee.status !== 'checked-out' && (
+                <Button
+                  onClick={() => startAttendanceAction(employee.status === 'checked-in' ? 'checkout' : 'checkin')}
+                  disabled={isProcessing || isVerifyingLocation || pendingAction !== null}
+                  className={`w-full h-12 text-base ${
+                    employee.status === 'checked-in'
+                      ? 'bg-destructive hover:bg-destructive/90'
+                      : 'bg-primary hover:bg-primary/90'
+                  }`}
+                >
+                  {isProcessing || isVerifyingLocation ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      {verificationStep === 'face' ? 'Verifying Face...' : verificationStep === 'location' ? 'Verifying Location...' : 'Processing...'}
+                    </>
+                  ) : employee.status === 'checked-in' ? (
+                    <>
+                      <LogOut className="w-5 h-5 mr-2" />
+                      Check Out
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-5 h-5 mr-2" />
+                      Check In
+                    </>
                   )}
+                </Button>
+              )}
+              
+              {employee.status === 'checked-out' && (
+                <div className="text-center p-3 rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground">
+                    You have completed your work day. See you tomorrow!
+                  </p>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Clock className="w-3 h-3" />
-                  <span className="text-xs">Now</span>
-                </div>
-                <p className="text-lg font-mono font-semibold text-foreground">
-                  {currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              )}
+              
+              {/* Verification info */}
+              {employee.faceDescriptor && employee.faceDescriptor.length > 0 && employee.status !== 'checked-out' && (
+                <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
+                  <Camera className="w-3 h-3" />
+                  Face verification required
                 </p>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -669,6 +900,27 @@ const EmployeeDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Face Verification Dialog */}
+      <Dialog open={showFaceVerification} onOpenChange={(open) => !open && cancelVerification()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="w-5 h-5" />
+              Face Verification
+            </DialogTitle>
+          </DialogHeader>
+          {showFaceVerification && employee?.faceDescriptor && (
+            <FaceCapture
+              mode="verify"
+              existingDescriptors={employee.faceDescriptor}
+              onCapture={() => {}} // Not used in verify mode
+              onVerified={handleFaceVerified}
+              onCancel={cancelVerification}
+            />
           )}
         </DialogContent>
       </Dialog>
