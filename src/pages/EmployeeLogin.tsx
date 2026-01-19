@@ -60,6 +60,17 @@ const EmployeeLogin: React.FC = () => {
     if (!employeeId.trim()) return;
     
     setIsLoading(true);
+    
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+      toast({
+        title: "Request timed out",
+        description: "Please check your connection and try again.",
+        variant: "destructive",
+      });
+    }, 10000); // 10 second timeout
+    
     try {
       const searchId = employeeId.toUpperCase().replace(/[^A-Z0-9]/g, '');
       
@@ -67,6 +78,8 @@ const EmployeeLogin: React.FC = () => {
       const { data: employees, error } = await supabase
         .from('employees')
         .select('*');
+      
+      clearTimeout(timeoutId);
       
       if (error) throw error;
       
@@ -125,6 +138,7 @@ const EmployeeLogin: React.FC = () => {
         });
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Error looking up employee:', error);
       toast({
         title: "Error",
