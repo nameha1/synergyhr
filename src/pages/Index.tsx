@@ -5,6 +5,7 @@ import { StatsCard } from '@/components/StatsCard';
 import { EmployeeCard } from '@/components/EmployeeCard';
 import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
 import { DepartmentManagementDialog } from '@/components/DepartmentManagementDialog';
+import { OfficeSettingsDialog } from '@/components/OfficeSettingsDialog';
 import { SearchFilter } from '@/components/SearchFilter';
 import { HRPolicyUpload } from '@/components/HRPolicyUpload';
 import { supabase } from '@/integrations/supabase/client';
@@ -234,6 +235,7 @@ const Index = () => {
               </p>
             </div>
             <div className="flex gap-2">
+              <OfficeSettingsDialog />
               <DepartmentManagementDialog onUpdate={fetchEmployees} />
               <AddEmployeeDialog onAdd={fetchEmployees} />
             </div>
