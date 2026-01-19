@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { mockEmployees } from '@/data/mockEmployees';
 import { Employee } from '@/types/employee';
+import { HRPolicyViewer } from '@/components/HRPolicyViewer';
 
 // Generate mock attendance data for a month
 const generateMonthlyData = (year: number, month: number) => {
@@ -371,6 +372,9 @@ const EmployeeDashboard: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* HR Policy Section */}
+        <HRPolicyViewer />
       </main>
     </div>
   );
