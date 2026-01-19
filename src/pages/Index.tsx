@@ -6,6 +6,7 @@ import { EmployeeCard } from '@/components/EmployeeCard';
 import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
 import { DepartmentManagementDialog } from '@/components/DepartmentManagementDialog';
 import { SearchFilter } from '@/components/SearchFilter';
+import { HRPolicyUpload } from '@/components/HRPolicyUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee, AttendanceStats } from '@/types/employee';
 import { toast } from 'sonner';
@@ -266,6 +267,11 @@ const Index = () => {
               <p>No employees found matching your criteria.</p>
             </div>
           )}
+        </div>
+
+        {/* HR Policy Section */}
+        <div className="mt-8">
+          <HRPolicyUpload />
         </div>
       </main>
     </div>
