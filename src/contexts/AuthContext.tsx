@@ -74,11 +74,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        // Skip admin check if we just logged in (it's already done in login function)
+        // Skip admin check while login() is verifying admin role; it will finalize loading/isAdmin.
         if (justLoggedIn.current) {
-          console.log('Skipping admin check - already done during login');
-          justLoggedIn.current = false;
-          setLoading(false);
+          console.log('Skipping admin check - login in progress');
           return;
         }
         
@@ -114,6 +112,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    setLoading(true);
+    justLoggedIn.current = true;
+
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const finish = () => {
+      justLoggedIn.current = false;
+      setLoading(false);
+    };
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -121,38 +128,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (error) {
+        finish();
         return { success: false, error: error.message };
       }
 
-      // Check if user is admin using the session's access token
-      if (data.user && data.session) {
-        // Use the new session directly to make the authenticated request
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .eq('role', 'admin')
-          .maybeSingle();
-        
-        if (roleError) {
-          console.error('Error checking admin role:', roleError);
-          await supabase.auth.signOut();
-          return { success: false, error: 'Failed to verify admin access. Please try again.' };
-        }
-        
-        if (!roleData) {
-          // Sign out non-admin users trying to access admin portal
-          await supabase.auth.signOut();
-          return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
-        }
-        
-        // Mark that we just logged in so onAuthStateChange skips redundant admin check
-        justLoggedIn.current = true;
-        setIsAdmin(true);
+      // Ensure app state is updated immediately (avoid relying solely on onAuthStateChange)
+      setSession(data.session ?? null);
+      setUser(data.user ?? null);
+
+      if (!data.user) {
+        finish();
+        return { success: false, error: 'Login succeeded but no user was returned.' };
       }
 
+      // Role check (retry a few times in case the request gets aborted during navigation)
+      let adminStatus = await checkAdminRole(data.user.id);
+      for (let i = 0; i < 3 && adminStatus === null; i++) {
+        await sleep(150 * (i + 1));
+        adminStatus = await checkAdminRole(data.user.id);
+      }
+
+      if (adminStatus !== true) {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setIsAdmin(false);
+        finish();
+
+        if (adminStatus === false) {
+          return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
+        }
+
+        return { success: false, error: 'Failed to verify admin access. Please try again.' };
+      }
+
+      setIsAdmin(true);
+      finish();
       return { success: true };
     } catch (error: any) {
+      finish();
       return { success: false, error: error.message };
     }
   };
