@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Shield, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
-
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,58 +15,54 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
-  const { login, signup } = useAuth();
+  const {
+    login,
+    signup
+  } = useAuth();
   const navigate = useNavigate();
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
     try {
       const result = await login(email, password);
       if (result.success) {
         toast.success("Welcome back!", {
-          description: "You've successfully logged in.",
+          description: "You've successfully logged in."
         });
         navigate('/');
       } else {
         toast.error("Login failed", {
-          description: result.error || "Please check your credentials and try again.",
+          description: result.error || "Please check your credentials and try again."
         });
       }
     } catch (error) {
       toast.error("Error", {
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred."
       });
     } finally {
       setIsLoading(false);
     }
   };
-
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (password !== confirmPassword) {
       toast.error("Passwords don't match", {
-        description: "Please make sure your passwords match.",
+        description: "Please make sure your passwords match."
       });
       return;
     }
-
     if (password.length < 6) {
       toast.error("Password too short", {
-        description: "Password must be at least 6 characters.",
+        description: "Password must be at least 6 characters."
       });
       return;
     }
-
     setIsLoading(true);
-
     try {
       const result = await signup(email, password);
       if (result.success) {
         toast.success("Account created!", {
-          description: "Please check your email to verify your account. After verification, an existing admin needs to grant you admin access.",
+          description: "Please check your email to verify your account. After verification, an existing admin needs to grant you admin access."
         });
         setEmail('');
         setPassword('');
@@ -75,33 +70,30 @@ const Login: React.FC = () => {
         setActiveTab('login');
       } else {
         toast.error("Signup failed", {
-          description: result.error || "Please try again.",
+          description: result.error || "Please try again."
         });
       }
     } catch (error) {
       toast.error("Error", {
-        description: "An unexpected error occurred.",
+        description: "An unexpected error occurred."
       });
     } finally {
       setIsLoading(false);
     }
   };
-
   const resetForm = () => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
   };
-
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+  return <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo/Brand */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
             <Shield className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">AttendanceHub</h1>
+          <h1 className="text-2xl font-bold text-foreground text-center font-sans bg-transparent">​Synergy HR Admin Portal         </h1>
           <p className="text-muted-foreground mt-1">Admin Portal</p>
         </div>
 
@@ -114,7 +106,10 @@ const Login: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); resetForm(); }}>
+            <Tabs value={activeTab} onValueChange={v => {
+            setActiveTab(v);
+            resetForm();
+          }}>
               <TabsList className="grid w-full grid-cols-2 mb-4">
                 <TabsTrigger value="login">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -124,57 +119,24 @@ const Login: React.FC = () => {
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      placeholder="admin@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="h-11"
-                    />
+                    <Input id="login-email" type="email" placeholder="admin@company.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-11" />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="login-password">Password</Label>
                     <div className="relative">
-                      <Input
-                        id="login-password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        className="h-11 pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
+                      <Input id="login-password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} className="h-11 pr-10" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full h-11 font-medium"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
+                  <Button type="submit" className="w-full h-11 font-medium" disabled={isLoading}>
+                    {isLoading ? <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Signing in...
-                      </>
-                    ) : (
-                      'Sign in'
-                    )}
+                      </> : 'Sign in'}
                   </Button>
                 </form>
               </TabsContent>
@@ -183,71 +145,29 @@ const Login: React.FC = () => {
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      className="h-11"
-                    />
+                    <Input id="signup-email" type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required className="h-11" />
                   </div>
                   
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
-                      <Input
-                        id="signup-password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={6}
-                        className="h-11 pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
+                      <Input id="signup-password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} className="h-11 pr-10" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">Confirm Password</Label>
-                    <Input
-                      id="confirm-password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      minLength={6}
-                      className="h-11"
-                    />
+                    <Input id="confirm-password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} className="h-11" />
                   </div>
 
-                  <Button
-                    type="submit"
-                    className="w-full h-11 font-medium"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
+                  <Button type="submit" className="w-full h-11 font-medium" disabled={isLoading}>
+                    {isLoading ? <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Creating account...
-                      </>
-                    ) : (
-                      'Create account'
-                    )}
+                      </> : 'Create account'}
                   </Button>
                 </form>
 
@@ -270,10 +190,7 @@ const Login: React.FC = () => {
 
         {/* Employee link */}
         <div className="mt-6 text-center">
-          <Link 
-            to="/employee" 
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
-          >
+          <Link to="/employee" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
             Employee Portal
             <ArrowRight className="w-3 h-3" />
           </Link>
@@ -284,8 +201,6 @@ const Login: React.FC = () => {
           Protected by Supabase authentication
         </p>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default Login;
