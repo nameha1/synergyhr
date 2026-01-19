@@ -56,27 +56,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     // Set up auth state listener BEFORE checking session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        // Check admin role
-        const adminStatus = await checkAdminRole(session.user.id);
-        setIsAdmin(adminStatus);
+        // Use setTimeout to defer Supabase calls and avoid potential deadlocks
+        setTimeout(async () => {
+          const adminStatus = await checkAdminRole(session.user.id);
+          console.log('Admin status from onAuthStateChange:', adminStatus);
+          setIsAdmin(adminStatus);
+          setLoading(false);
+        }, 0);
       } else {
         setIsAdmin(false);
+        setLoading(false);
       }
-      
-      setLoading(false);
     });
 
     // Check initial session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log('Initial session check:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         const adminStatus = await checkAdminRole(session.user.id);
+        console.log('Admin status from initial check:', adminStatus);
         setIsAdmin(adminStatus);
       }
       
