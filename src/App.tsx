@@ -7,6 +7,8 @@ import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import EmployeeLogin from "./pages/EmployeeLogin";
+import EmployeeDashboard from "./pages/EmployeeDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +22,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/employee" element={<EmployeeLogin />} />
+            <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
             <Route
               path="/"
               element={
