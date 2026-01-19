@@ -1,4 +1,7 @@
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
   isConnected: boolean;
@@ -6,6 +9,14 @@ interface HeaderProps {
 }
 
 export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
+  const { logout, adminEmail } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <header className="border-b border-border bg-card px-6 py-4">
       <div className="flex items-center justify-between">
@@ -32,6 +43,20 @@ export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
               </>
             )}
           </div>
+
+          {adminEmail && (
+            <div className="flex items-center gap-2 pl-3 border-l border-border">
+              <span className="text-sm text-muted-foreground">{adminEmail}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </header>
