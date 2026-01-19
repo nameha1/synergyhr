@@ -107,7 +107,7 @@ const EmployeeLogin: React.FC = () => {
           workEndTime: employee.work_end_time,
           workingHoursPerDay: employee.working_hours_per_day,
           lateThresholdMinutes: employee.late_threshold_minutes,
-          faceDescriptor: employee.face_descriptor as number[] | null,
+          faceDescriptor: employee.face_descriptor as number[][] | null,
           weekendDays: employee.weekend_days || [5, 6],
         };
         
@@ -425,10 +425,10 @@ const EmployeeLogin: React.FC = () => {
                     <p className="font-semibold text-foreground">{currentEmployee.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {currentEmployee.department} • {currentEmployee.employeeId}
-                      {currentEmployee.faceDescriptor && (
+                      {currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0 && (
                         <span className="inline-flex items-center gap-1 ml-2 text-primary">
                           <Camera className="w-3 h-3" />
-                          Face ID
+                          Face ID ({currentEmployee.faceDescriptor.length})
                         </span>
                       )}
                     </p>
@@ -465,7 +465,7 @@ const EmployeeLogin: React.FC = () => {
                 {currentEmployee.status !== 'checked-in' && (
                   <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
                     <p className="text-xs text-primary flex items-center justify-center gap-2 flex-wrap">
-                      {currentEmployee.faceDescriptor && (
+                      {currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0 && (
                         <span className="flex items-center gap-1">
                           <Camera className="w-3 h-3" />
                           Face verification
@@ -583,10 +583,10 @@ const EmployeeLogin: React.FC = () => {
               }
             </DialogDescription>
           </DialogHeader>
-          {currentEmployee?.faceDescriptor && (
+          {currentEmployee?.faceDescriptor && currentEmployee.faceDescriptor.length > 0 && (
             <FaceCapture
               mode="verify"
-              existingDescriptor={currentEmployee.faceDescriptor}
+              existingDescriptors={currentEmployee.faceDescriptor}
               onCapture={() => {}}
               onVerified={handleFaceVerified}
               onCancel={cancelVerification}

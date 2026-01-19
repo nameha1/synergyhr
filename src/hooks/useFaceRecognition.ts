@@ -71,6 +71,26 @@ export const useFaceRecognition = () => {
     []
   );
 
+  // Compare against multiple stored descriptors, return best match
+  const compareFacesMultiple = useCallback(
+    (descriptor: Float32Array, storedDescriptors: number[][]): { distance: number; bestIndex: number } => {
+      let bestDistance = Infinity;
+      let bestIndex = -1;
+
+      for (let i = 0; i < storedDescriptors.length; i++) {
+        const storedDescriptor = new Float32Array(storedDescriptors[i]);
+        const distance = faceapi.euclideanDistance(descriptor, storedDescriptor);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i;
+        }
+      }
+
+      return { distance: bestDistance, bestIndex };
+    },
+    []
+  );
+
   const descriptorToArray = useCallback(
     (descriptor: Float32Array): number[] => Array.from(descriptor),
     []
@@ -85,6 +105,7 @@ export const useFaceRecognition = () => {
     ...state,
     detectFace,
     compareFaces,
+    compareFacesMultiple,
     descriptorToArray,
     arrayToDescriptor,
   };
