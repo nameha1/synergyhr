@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -32,6 +32,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  // Track if we just logged in (to skip redundant admin check in onAuthStateChange)
+  const justLoggedIn = useRef(false);
 
   const checkAdminRole = async (userId: string) => {
     try {
@@ -43,11 +46,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .maybeSingle();
       
       if (error) {
+        // Ignore abort errors
+        if (error.message?.includes('AbortError') || error.code === '') {
+          console.log('Admin check request was aborted (likely due to navigation)');
+          return null; // Return null to indicate we couldn't check
+        }
         console.error('Error checking admin role:', error);
         return false;
       }
       return !!data;
-    } catch (error) {
+    } catch (error: any) {
+      // Ignore abort errors
+      if (error?.name === 'AbortError' || error?.message?.includes('AbortError')) {
+        console.log('Admin check request was aborted (likely due to navigation)');
+        return null;
+      }
       console.error('Error checking admin role:', error);
       return false;
     }
@@ -61,17 +74,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        // Use setTimeout to defer Supabase calls and avoid potential deadlocks
-        setTimeout(async () => {
-          const adminStatus = await checkAdminRole(session.user.id);
-          console.log('Admin status from onAuthStateChange:', adminStatus);
-          setIsAdmin(adminStatus);
+        // Skip admin check if we just logged in (it's already done in login function)
+        if (justLoggedIn.current) {
+          console.log('Skipping admin check - already done during login');
+          justLoggedIn.current = false;
           setLoading(false);
-        }, 0);
+          return;
+        }
+        
+        // For other auth state changes (like page reload), check admin status
+        const adminStatus = await checkAdminRole(session.user.id);
+        if (adminStatus !== null) {
+          setIsAdmin(adminStatus);
+        }
       } else {
         setIsAdmin(false);
-        setLoading(false);
       }
+      
+      setLoading(false);
     });
 
     // Check initial session
@@ -82,8 +102,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (session?.user) {
         const adminStatus = await checkAdminRole(session.user.id);
-        console.log('Admin status from initial check:', adminStatus);
-        setIsAdmin(adminStatus);
+        if (adminStatus !== null) {
+          setIsAdmin(adminStatus);
+        }
       }
       
       setLoading(false);
@@ -124,6 +145,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           await supabase.auth.signOut();
           return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
         }
+        
+        // Mark that we just logged in so onAuthStateChange skips redundant admin check
+        justLoggedIn.current = true;
         setIsAdmin(true);
       }
 
