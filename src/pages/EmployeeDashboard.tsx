@@ -26,7 +26,7 @@ const generateMonthlyData = (year: number, month: number) => {
   
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
-    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    const isWeekend = date.getDay() === 5 || date.getDay() === 6; // Friday & Saturday are weekends
     const isFuture = date > today;
     const isToday = date.toDateString() === today.toDateString();
     
@@ -106,7 +106,7 @@ const EmployeeDashboard: React.FC = () => {
     return null;
   }
 
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri*', 'Sat*']; // * = Weekend
   const firstDayOfMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1).getDay();
 
   return (
