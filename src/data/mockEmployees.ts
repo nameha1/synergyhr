@@ -1,0 +1,58 @@
+import { Employee } from '@/types/employee';
+
+export const mockEmployees: Employee[] = [
+  {
+    id: '1',
+    employeeId: 'EMP-001',
+    name: 'Sarah Johnson',
+    email: 'sarah.johnson@company.com',
+    department: 'Engineering',
+    status: 'checked-in',
+    checkInTime: '09:02 AM',
+  },
+  {
+    id: '2',
+    employeeId: 'EMP-002',
+    name: 'Michael Chen',
+    email: 'michael.chen@company.com',
+    department: 'Design',
+    status: 'checked-in',
+    checkInTime: '08:45 AM',
+  },
+  {
+    id: '3',
+    employeeId: 'EMP-003',
+    name: 'Emily Davis',
+    email: 'emily.davis@company.com',
+    department: 'Marketing',
+    status: 'checked-out',
+    checkInTime: '08:30 AM',
+    checkOutTime: '05:15 PM',
+  },
+  {
+    id: '4',
+    employeeId: 'EMP-004',
+    name: 'James Wilson',
+    email: 'james.wilson@company.com',
+    department: 'Engineering',
+    status: 'absent',
+  },
+  {
+    id: '5',
+    employeeId: 'EMP-005',
+    name: 'Lisa Anderson',
+    email: 'lisa.anderson@company.com',
+    department: 'HR',
+    status: 'checked-in',
+    checkInTime: '09:15 AM',
+  },
+  {
+    id: '6',
+    employeeId: 'EMP-006',
+    name: 'David Brown',
+    email: 'david.brown@company.com',
+    department: 'Finance',
+    status: 'checked-in',
+    checkInTime: '08:55 AM',
+  },
+];
