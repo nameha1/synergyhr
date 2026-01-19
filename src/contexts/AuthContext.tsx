@@ -133,7 +133,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     justLoggedIn.current = true;
 
-    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const finish = () => {
       justLoggedIn.current = false;
       setLoading(false);
@@ -159,12 +158,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: 'Login succeeded but no user was returned.' };
       }
 
-      // Role check (retry a few times in case the request gets aborted during navigation)
-      let adminStatus = await checkAdminRole(data.user.id);
-      for (let i = 0; i < 3 && adminStatus === null; i++) {
-        await sleep(150 * (i + 1));
-        adminStatus = await checkAdminRole(data.user.id);
-      }
+      // Role check with timeout to prevent infinite hanging
+      const checkWithTimeout = async (): Promise<boolean | null> => {
+        return new Promise(async (resolve) => {
+          // Set a 5 second timeout
+          const timeout = setTimeout(() => {
+            console.log('Admin check timed out');
+            resolve(null);
+          }, 5000);
+
+          try {
+            const result = await checkAdminRole(data.user!.id);
+            clearTimeout(timeout);
+            resolve(result);
+          } catch (err) {
+            clearTimeout(timeout);
+            resolve(null);
+          }
+        });
+      };
+
+      const adminStatus = await checkWithTimeout();
 
       if (adminStatus !== true) {
         await supabase.auth.signOut();
