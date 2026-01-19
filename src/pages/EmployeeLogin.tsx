@@ -15,12 +15,15 @@ import {
   CheckCircle2,
   Wifi,
   WifiOff,
-  Camera
+  Camera,
+  MapPin,
+  AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee } from '@/types/employee';
 import { FaceCapture } from '@/components/FaceCapture';
+import { useLocationVerification } from '@/hooks/useLocationVerification';
 import {
   Dialog,
   DialogContent,
@@ -34,10 +37,19 @@ const EmployeeLogin: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isConnected] = useState(true);
   const [showFaceVerification, setShowFaceVerification] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'checkin' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'checkin' | 'checkout' | 'dashboard' | null>(null);
+  const [verificationStep, setVerificationStep] = useState<'face' | 'location' | null>(null);
   const { toast } = useToast();
+  
+  const {
+    isVerifying: isVerifyingLocation,
+    ipAllowed,
+    locationAllowed,
+    error: locationError,
+    verifyLocation,
+    reset: resetLocation,
+  } = useLocationVerification();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -96,6 +108,7 @@ const EmployeeLogin: React.FC = () => {
           workingHoursPerDay: employee.working_hours_per_day,
           lateThresholdMinutes: employee.late_threshold_minutes,
           faceDescriptor: employee.face_descriptor as number[] | null,
+          weekendDays: employee.weekend_days || [5, 6],
         };
         
         setCurrentEmployee(mappedEmployee);
@@ -168,36 +181,7 @@ const EmployeeLogin: React.FC = () => {
     }
   };
 
-  const handleCheckIn = () => {
-    if (!currentEmployee) return;
-    
-    // If employee has face data, require face verification
-    if (currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0) {
-      setPendingAction('checkin');
-      setShowFaceVerification(true);
-    } else {
-      // No face data registered, proceed with normal check-in
-      performCheckIn();
-    }
-  };
-
-  const handleFaceVerified = (match: boolean, distance: number) => {
-    if (match) {
-      setShowFaceVerification(false);
-      if (pendingAction === 'checkin') {
-        performCheckIn();
-      }
-      setPendingAction(null);
-    } else {
-      toast({
-        title: "Face Verification Failed",
-        description: "Your face does not match our records. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCheckOut = async () => {
+  const performCheckOut = async () => {
     if (!currentEmployee) return;
     
     const today = new Date().toISOString().split('T')[0];
@@ -232,11 +216,103 @@ const EmployeeLogin: React.FC = () => {
     }
   };
 
+  // Start verification flow for check-in/check-out
+  const startAttendanceAction = (action: 'checkin' | 'checkout') => {
+    if (!currentEmployee) return;
+    
+    setPendingAction(action);
+    resetLocation();
+    
+    // If employee has face data, start with face verification
+    if (currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0) {
+      setVerificationStep('face');
+      setShowFaceVerification(true);
+    } else {
+      // No face data, go directly to location verification
+      setVerificationStep('location');
+      performLocationVerification(action);
+    }
+  };
+
+  // Start dashboard access flow (face verification only)
+  const startDashboardAccess = () => {
+    if (!currentEmployee) return;
+    
+    // If employee has face data, require face verification for dashboard
+    if (currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0) {
+      setPendingAction('dashboard');
+      setVerificationStep('face');
+      setShowFaceVerification(true);
+    } else {
+      // No face data, allow dashboard access directly
+      window.location.href = '/employee/dashboard';
+    }
+  };
+
+  const handleFaceVerified = async (match: boolean, distance: number) => {
+    if (match) {
+      setShowFaceVerification(false);
+      
+      if (pendingAction === 'dashboard') {
+        // Dashboard access only needs face verification
+        setPendingAction(null);
+        setVerificationStep(null);
+        window.location.href = '/employee/dashboard';
+      } else if (pendingAction === 'checkin' || pendingAction === 'checkout') {
+        // Check-in/out needs location verification too
+        setVerificationStep('location');
+        await performLocationVerification(pendingAction);
+      }
+    } else {
+      toast({
+        title: "Face Verification Failed",
+        description: "Your face does not match our records. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const performLocationVerification = async (action: 'checkin' | 'checkout') => {
+    const result = await verifyLocation();
+    
+    if (result.success) {
+      // Location verified, perform the action
+      if (action === 'checkin') {
+        await performCheckIn();
+      } else {
+        await performCheckOut();
+      }
+      setPendingAction(null);
+      setVerificationStep(null);
+    } else {
+      toast({
+        title: "Location Verification Failed",
+        description: result.error || "You must be at the office to check in/out.",
+        variant: "destructive",
+      });
+      setPendingAction(null);
+      setVerificationStep(null);
+    }
+  };
+
   const handleReset = () => {
     setCurrentEmployee(null);
     setEmployeeId('');
     sessionStorage.removeItem('currentEmployeeId');
+    setPendingAction(null);
+    setVerificationStep(null);
+    resetLocation();
   };
+
+  const cancelVerification = () => {
+    setShowFaceVerification(false);
+    setPendingAction(null);
+    setVerificationStep(null);
+    resetLocation();
+  };
+
+  // Determine connection status based on location verification results
+  const isConnected = ipAllowed !== false;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -250,8 +326,8 @@ const EmployeeLogin: React.FC = () => {
           <p className="text-muted-foreground text-sm mt-1">Employee Check-In Portal</p>
         </div>
 
-        {/* Connection Status */}
-        <div className="flex justify-center mb-6">
+        {/* Connection/Location Status */}
+        <div className="flex justify-center gap-2 mb-6">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
             isConnected 
               ? 'bg-accent text-accent-foreground' 
@@ -260,7 +336,7 @@ const EmployeeLogin: React.FC = () => {
             {isConnected ? (
               <>
                 <Wifi className="w-4 h-4" />
-                <span className="font-medium">Office Network Connected</span>
+                <span className="font-medium">Network OK</span>
               </>
             ) : (
               <>
@@ -318,7 +394,7 @@ const EmployeeLogin: React.FC = () => {
                 <Button
                   onClick={handleLookup}
                   className="w-full h-11"
-                  disabled={isLoading || !employeeId.trim() || !isConnected}
+                  disabled={isLoading || !employeeId.trim()}
                 >
                   {isLoading ? (
                     <>
@@ -385,29 +461,61 @@ const EmployeeLogin: React.FC = () => {
                   </Badge>
                 </div>
 
-                {/* Face verification notice */}
-                {currentEmployee.faceDescriptor && currentEmployee.status !== 'checked-in' && (
-                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-center">
-                    <p className="text-xs text-primary flex items-center justify-center gap-2">
-                      <Camera className="w-4 h-4" />
-                      Face verification required for check-in
+                {/* Verification requirements notice */}
+                {currentEmployee.status !== 'checked-in' && (
+                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                    <p className="text-xs text-primary flex items-center justify-center gap-2 flex-wrap">
+                      {currentEmployee.faceDescriptor && (
+                        <span className="flex items-center gap-1">
+                          <Camera className="w-3 h-3" />
+                          Face verification
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        Location check
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Wifi className="w-3 h-3" />
+                        IP verification
+                      </span>
                     </p>
+                    <p className="text-xs text-muted-foreground text-center mt-1">
+                      Required for check-in/out
+                    </p>
+                  </div>
+                )}
+
+                {/* Location verification in progress */}
+                {verificationStep === 'location' && isVerifyingLocation && (
+                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">Verifying location...</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Location error display */}
+                {locationError && verificationStep === 'location' && (
+                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-destructive" />
+                      <span className="text-sm text-destructive">{locationError}</span>
+                    </div>
                   </div>
                 )}
 
                 {/* Check In/Out Buttons */}
                 <div className="grid grid-cols-2 gap-3">
                   <Button
-                    onClick={handleCheckIn}
-                    disabled={currentEmployee.status === 'checked-in' || !isConnected}
+                    onClick={() => startAttendanceAction('checkin')}
+                    disabled={currentEmployee.status === 'checked-in' || isVerifyingLocation}
                     className="h-14 text-base"
                     variant={currentEmployee.status === 'checked-in' ? 'outline' : 'default'}
                   >
-                    {currentEmployee.faceDescriptor ? (
-                      <>
-                        <Camera className="w-5 h-5 mr-2" />
-                        Verify & Check In
-                      </>
+                    {isVerifyingLocation && pendingAction === 'checkin' ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
                         <LogIn className="w-5 h-5 mr-2" />
@@ -416,23 +524,40 @@ const EmployeeLogin: React.FC = () => {
                     )}
                   </Button>
                   <Button
-                    onClick={handleCheckOut}
-                    disabled={currentEmployee.status !== 'checked-in' || !isConnected}
+                    onClick={() => startAttendanceAction('checkout')}
+                    disabled={currentEmployee.status !== 'checked-in' || isVerifyingLocation}
                     variant="outline"
                     className="h-14 text-base"
                   >
-                    <LogOut className="w-5 h-5 mr-2" />
-                    Check Out
+                    {isVerifyingLocation && pendingAction === 'checkout' ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <LogOut className="w-5 h-5 mr-2" />
+                        Check Out
+                      </>
+                    )}
                   </Button>
                 </div>
 
                 {/* Dashboard Link */}
-                <Link to="/employee/dashboard" className="block">
-                  <Button variant="secondary" className="w-full h-11">
-                    <LayoutDashboard className="w-4 h-4 mr-2" />
-                    View My Dashboard
-                  </Button>
-                </Link>
+                <Button 
+                  variant="secondary" 
+                  className="w-full h-11"
+                  onClick={startDashboardAccess}
+                >
+                  <LayoutDashboard className="w-4 h-4 mr-2" />
+                  View My Dashboard
+                  {currentEmployee.faceDescriptor && (
+                    <Camera className="w-3 h-3 ml-2 opacity-70" />
+                  )}
+                </Button>
+                
+                {currentEmployee.faceDescriptor && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Face verification required for dashboard access
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
@@ -447,12 +572,15 @@ const EmployeeLogin: React.FC = () => {
       </div>
 
       {/* Face Verification Dialog */}
-      <Dialog open={showFaceVerification} onOpenChange={setShowFaceVerification}>
+      <Dialog open={showFaceVerification} onOpenChange={(open) => !open && cancelVerification()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Face Verification</DialogTitle>
             <DialogDescription>
-              Please look at the camera to verify your identity before checking in.
+              {pendingAction === 'dashboard' 
+                ? "Please verify your identity to access your dashboard."
+                : "Please look at the camera to verify your identity before checking in/out."
+              }
             </DialogDescription>
           </DialogHeader>
           {currentEmployee?.faceDescriptor && (
@@ -461,10 +589,7 @@ const EmployeeLogin: React.FC = () => {
               existingDescriptor={currentEmployee.faceDescriptor}
               onCapture={() => {}}
               onVerified={handleFaceVerified}
-              onCancel={() => {
-                setShowFaceVerification(false);
-                setPendingAction(null);
-              }}
+              onCancel={cancelVerification}
             />
           )}
         </DialogContent>

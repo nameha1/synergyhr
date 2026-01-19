@@ -17,6 +17,8 @@ export interface Employee {
   lateThresholdMinutes?: number;
   // Facial recognition
   faceDescriptor?: number[] | null;
+  // Weekend days (0=Sunday, 6=Saturday)
+  weekendDays?: number[];
 }
 
 export interface AttendanceStats {

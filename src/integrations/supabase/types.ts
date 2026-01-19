@@ -97,6 +97,7 @@ export type Database = {
           late_threshold_minutes: number
           name: string
           updated_at: string
+          weekend_days: number[]
           work_end_time: string
           work_start_time: string
           working_hours_per_day: number
@@ -112,6 +113,7 @@ export type Database = {
           late_threshold_minutes?: number
           name: string
           updated_at?: string
+          weekend_days?: number[]
           work_end_time?: string
           work_start_time?: string
           working_hours_per_day?: number
@@ -127,9 +129,37 @@ export type Database = {
           late_threshold_minutes?: number
           name?: string
           updated_at?: string
+          weekend_days?: number[]
           work_end_time?: string
           work_start_time?: string
           working_hours_per_day?: number
+        }
+        Relationships: []
+      }
+      office_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          setting_key: string
+          setting_value: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string
         }
         Relationships: []
       }
