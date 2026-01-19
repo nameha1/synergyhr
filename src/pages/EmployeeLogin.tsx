@@ -38,7 +38,11 @@ const EmployeeLogin: React.FC = () => {
     
     setIsLoading(true);
     setTimeout(() => {
-      const employee = mockEmployees.find(emp => emp.employeeId === employeeId.toUpperCase());
+      const searchId = employeeId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const employee = mockEmployees.find(emp => {
+        const normalizedEmpId = emp.employeeId.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return normalizedEmpId === searchId;
+      });
       
       if (employee) {
         setCurrentEmployee(employee);
@@ -189,7 +193,7 @@ const EmployeeLogin: React.FC = () => {
                 {/* Demo hint */}
                 <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
                   <p className="text-xs text-muted-foreground text-center">
-                    <span className="font-medium">Demo IDs:</span> EMP001, EMP002, EMP003, EMP004, EMP005
+                    <span className="font-medium">Demo IDs:</span> EMP-001, EMP-002, EMP-003, EMP-004, EMP-005
                   </p>
                 </div>
               </div>
