@@ -92,6 +92,7 @@ export type Database = {
           department: string
           email: string
           employee_id: string
+          face_descriptor: Json | null
           id: string
           late_threshold_minutes: number
           name: string
@@ -106,6 +107,7 @@ export type Database = {
           department: string
           email: string
           employee_id: string
+          face_descriptor?: Json | null
           id?: string
           late_threshold_minutes?: number
           name: string
@@ -120,6 +122,7 @@ export type Database = {
           department?: string
           email?: string
           employee_id?: string
+          face_descriptor?: Json | null
           id?: string
           late_threshold_minutes?: number
           name?: string

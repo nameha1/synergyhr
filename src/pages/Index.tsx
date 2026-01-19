@@ -24,6 +24,7 @@ const mapDbEmployee = (dbEmployee: any): Employee => ({
   workEndTime: dbEmployee.work_end_time,
   workingHoursPerDay: dbEmployee.working_hours_per_day,
   lateThresholdMinutes: dbEmployee.late_threshold_minutes,
+  faceDescriptor: dbEmployee.face_descriptor,
 });
 
 const Index = () => {

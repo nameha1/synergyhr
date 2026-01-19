@@ -15,6 +15,8 @@ export interface Employee {
   workEndTime?: string;
   workingHoursPerDay?: number;
   lateThresholdMinutes?: number;
+  // Facial recognition
+  faceDescriptor?: number[] | null;
 }
 
 export interface AttendanceStats {

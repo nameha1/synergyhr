@@ -1,7 +1,8 @@
-import { Clock, LogIn, LogOut, User } from 'lucide-react';
+import { Clock, LogIn, LogOut, User, Camera } from 'lucide-react';
 import { Employee } from '@/types/employee';
 import { Button } from '@/components/ui/button';
 import { EditEmployeeScheduleDialog } from './EditEmployeeScheduleDialog';
+import { FaceRegistrationDialog } from './FaceRegistrationDialog';
 
 interface EmployeeCardProps {
   employee: Employee;
@@ -51,19 +52,33 @@ export const EmployeeCard = ({ employee, onCheckIn, onCheckOut, onScheduleUpdate
           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
             {status.label}
           </span>
+          {employee.faceDescriptor && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Camera className="w-3 h-3" />
+              Face
+            </span>
+          )}
           {onScheduleUpdate && (
-            <EditEmployeeScheduleDialog
-              employee={{
-                id: employee.id,
-                employee_id: employee.employeeId,
-                name: employee.name,
-                work_start_time: employee.workStartTime || '09:00:00',
-                work_end_time: employee.workEndTime || '17:00:00',
-                working_hours_per_day: employee.workingHoursPerDay || 8,
-                late_threshold_minutes: employee.lateThresholdMinutes || 15,
-              }}
-              onUpdate={onScheduleUpdate}
-            />
+            <>
+              <FaceRegistrationDialog
+                employeeId={employee.id}
+                employeeName={employee.name}
+                hasFaceData={!!employee.faceDescriptor}
+                onUpdate={onScheduleUpdate}
+              />
+              <EditEmployeeScheduleDialog
+                employee={{
+                  id: employee.id,
+                  employee_id: employee.employeeId,
+                  name: employee.name,
+                  work_start_time: employee.workStartTime || '09:00:00',
+                  work_end_time: employee.workEndTime || '17:00:00',
+                  working_hours_per_day: employee.workingHoursPerDay || 8,
+                  late_threshold_minutes: employee.lateThresholdMinutes || 15,
+                }}
+                onUpdate={onScheduleUpdate}
+              />
+            </>
           )}
         </div>
       </div>
