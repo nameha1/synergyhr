@@ -21,12 +21,11 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useDepartments } from '@/hooks/useDepartments';
 
 interface AddEmployeeDialogProps {
   onAdd: () => void;
 }
-
-const departments = ['Engineering', 'Design', 'Marketing', 'HR', 'Finance', 'Operations'];
 
 export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
   const [open, setOpen] = useState(false);
@@ -39,6 +38,7 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
   const [workingHours, setWorkingHours] = useState('8');
   const [lateThreshold, setLateThreshold] = useState('15');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { departmentNames, loading: loadingDepartments } = useDepartments();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,12 +133,12 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="department">Department *</Label>
-              <Select value={department} onValueChange={setDepartment}>
+              <Select value={department} onValueChange={setDepartment} disabled={loadingDepartments}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue placeholder={loadingDepartments ? "Loading..." : "Select department"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map((dept) => (
+                  {departmentNames.map((dept) => (
                     <SelectItem key={dept} value={dept}>
                       {dept}
                     </SelectItem>

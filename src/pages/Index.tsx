@@ -4,6 +4,7 @@ import { Header } from '@/components/Header';
 import { StatsCard } from '@/components/StatsCard';
 import { EmployeeCard } from '@/components/EmployeeCard';
 import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
+import { DepartmentManagementDialog } from '@/components/DepartmentManagementDialog';
 import { SearchFilter } from '@/components/SearchFilter';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee, AttendanceStats } from '@/types/employee';
@@ -230,7 +231,10 @@ const Index = () => {
                 {filteredEmployees.length} of {employees.length} employees
               </p>
             </div>
-            <AddEmployeeDialog onAdd={fetchEmployees} />
+            <div className="flex gap-2">
+              <DepartmentManagementDialog onUpdate={fetchEmployees} />
+              <AddEmployeeDialog onAdd={fetchEmployees} />
+            </div>
           </div>
 
           <SearchFilter
