@@ -179,6 +179,32 @@ const Index = () => {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      // First delete attendance records for this employee
+      const { error: attendanceError } = await supabase
+        .from('attendance_records')
+        .delete()
+        .eq('employee_id', id);
+
+      if (attendanceError) throw attendanceError;
+
+      // Then delete the employee
+      const { error: employeeError } = await supabase
+        .from('employees')
+        .delete()
+        .eq('id', id);
+
+      if (employeeError) throw employeeError;
+
+      toast.success('Employee deleted successfully');
+      fetchEmployees();
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      toast.error('Failed to delete employee');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -259,6 +285,7 @@ const Index = () => {
                   onCheckIn={handleCheckIn}
                   onCheckOut={handleCheckOut}
                   onScheduleUpdate={fetchEmployees}
+                  onDelete={handleDelete}
                 />
               </div>
             ))}
