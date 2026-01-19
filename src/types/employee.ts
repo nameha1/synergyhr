@@ -10,6 +10,11 @@ export interface Employee {
   status: AttendanceStatus;
   checkInTime?: string;
   checkOutTime?: string;
+  // Work schedule settings
+  workStartTime?: string;
+  workEndTime?: string;
+  workingHoursPerDay?: number;
+  lateThresholdMinutes?: number;
 }
 
 export interface AttendanceStats {

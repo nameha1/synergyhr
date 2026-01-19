@@ -14,7 +14,98 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance_records: {
+        Row: {
+          check_in_time: string | null
+          check_out_time: string | null
+          created_at: string
+          date: string
+          employee_id: string
+          id: string
+          is_late: boolean
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          check_in_time?: string | null
+          check_out_time?: string | null
+          created_at?: string
+          date: string
+          employee_id: string
+          id?: string
+          is_late?: boolean
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          check_in_time?: string | null
+          check_out_time?: string | null
+          created_at?: string
+          date?: string
+          employee_id?: string
+          id?: string
+          is_late?: boolean
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employees: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          department: string
+          email: string
+          employee_id: string
+          id: string
+          late_threshold_minutes: number
+          name: string
+          updated_at: string
+          work_end_time: string
+          work_start_time: string
+          working_hours_per_day: number
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          department: string
+          email: string
+          employee_id: string
+          id?: string
+          late_threshold_minutes?: number
+          name: string
+          updated_at?: string
+          work_end_time?: string
+          work_start_time?: string
+          working_hours_per_day?: number
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          department?: string
+          email?: string
+          employee_id?: string
+          id?: string
+          late_threshold_minutes?: number
+          name?: string
+          updated_at?: string
+          work_end_time?: string
+          work_start_time?: string
+          working_hours_per_day?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
