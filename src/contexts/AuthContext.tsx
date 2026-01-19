@@ -97,10 +97,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: error.message };
       }
 
-      // Check if user is admin
-      if (data.user) {
-        const adminStatus = await checkAdminRole(data.user.id);
-        if (!adminStatus) {
+      // Check if user is admin using the session's access token
+      if (data.user && data.session) {
+        // Use the new session directly to make the authenticated request
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
+        
+        if (roleError) {
+          console.error('Error checking admin role:', roleError);
+          await supabase.auth.signOut();
+          return { success: false, error: 'Failed to verify admin access. Please try again.' };
+        }
+        
+        if (!roleData) {
           // Sign out non-admin users trying to access admin portal
           await supabase.auth.signOut();
           return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
