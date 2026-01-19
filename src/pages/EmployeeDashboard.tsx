@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,20 +13,29 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { Employee } from '@/types/employee';
 import { HRPolicyViewer } from '@/components/HRPolicyViewer';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface DayData {
   day: number;
+  date: string;
   status: 'present' | 'absent' | 'weekend' | 'future';
   checkIn: string | null;
   checkOut: string | null;
   isLate: boolean;
   isToday: boolean;
   isFuture: boolean;
+  notes?: string | null;
 }
 
 const EmployeeDashboard: React.FC = () => {
@@ -35,6 +44,7 @@ const EmployeeDashboard: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [monthlyData, setMonthlyData] = useState<DayData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
   const navigate = useNavigate();
 
   // Fetch employee from database
@@ -108,68 +118,118 @@ const EmployeeDashboard: React.FC = () => {
   }, [navigate]);
 
   // Fetch attendance records for selected month
-  useEffect(() => {
-    const fetchMonthlyData = async () => {
-      if (!employee) return;
-      
-      const year = selectedMonth.getFullYear();
-      const month = selectedMonth.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const today = new Date();
-      
-      // Fetch attendance records for the month
-      const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-      const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${daysInMonth}`;
-      
-      const { data: records } = await supabase
-        .from('attendance_records')
-        .select('*')
-        .eq('employee_id', employee.id)
-        .gte('date', startDate)
-        .lte('date', endDate);
-      
-      const recordMap = new Map(records?.map(r => [r.date, r]) || []);
-      
-      const data: DayData[] = [];
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const isWeekend = date.getDay() === 5 || date.getDay() === 6; // Friday & Saturday are weekends
-        const isFuture = date > today;
-        const isToday = date.toDateString() === today.toDateString();
-        
-        const record = recordMap.get(dateStr);
-        
-        if (isWeekend) {
-          data.push({ day, status: 'weekend', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-        } else if (isFuture) {
-          data.push({ day, status: 'future', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-        } else if (record) {
-          const checkInTime = record.check_in_time 
-            ? new Date(record.check_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-            : null;
-          const checkOutTime = record.check_out_time
-            ? new Date(record.check_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-            : null;
-          data.push({ 
-            day, 
-            status: 'present', 
-            checkIn: checkInTime, 
-            checkOut: checkOutTime, 
-            isLate: record.is_late, 
-            isToday, 
-            isFuture 
-          });
-        } else {
-          data.push({ day, status: 'absent', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
-        }
-      }
-      
-      setMonthlyData(data);
-    };
+  const fetchMonthlyData = useCallback(async () => {
+    if (!employee) return;
     
-    fetchMonthlyData();
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+    
+    // Fetch attendance records for the month
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${daysInMonth}`;
+    
+    const { data: records } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('employee_id', employee.id)
+      .gte('date', startDate)
+      .lte('date', endDate);
+    
+    const recordMap = new Map(records?.map(r => [r.date, r]) || []);
+    
+    const data: DayData[] = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const isWeekend = date.getDay() === 5 || date.getDay() === 6; // Friday & Saturday are weekends
+      const isFuture = date > today;
+      const isToday = date.toDateString() === today.toDateString();
+      
+      const record = recordMap.get(dateStr);
+      
+      if (isWeekend) {
+        data.push({ day, date: dateStr, status: 'weekend', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+      } else if (isFuture) {
+        data.push({ day, date: dateStr, status: 'future', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+      } else if (record) {
+        const checkInTime = record.check_in_time 
+          ? new Date(record.check_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+          : null;
+        const checkOutTime = record.check_out_time
+          ? new Date(record.check_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+          : null;
+        data.push({ 
+          day, 
+          date: dateStr,
+          status: 'present', 
+          checkIn: checkInTime, 
+          checkOut: checkOutTime, 
+          isLate: record.is_late, 
+          isToday, 
+          isFuture,
+          notes: record.notes 
+        });
+      } else {
+        data.push({ day, date: dateStr, status: 'absent', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
+      }
+    }
+    
+    setMonthlyData(data);
   }, [employee, selectedMonth]);
+
+  useEffect(() => {
+    fetchMonthlyData();
+  }, [fetchMonthlyData]);
+
+  // Real-time subscription for attendance updates
+  useEffect(() => {
+    if (!employee) return;
+
+    const channel = supabase
+      .channel('attendance-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'attendance_records',
+          filter: `employee_id=eq.${employee.id}`,
+        },
+        (payload) => {
+          console.log('Real-time attendance update:', payload);
+          
+          // Refresh monthly data
+          fetchMonthlyData();
+          
+          // Update today's status if it's a change for today
+          const today = new Date().toISOString().split('T')[0];
+          if (payload.new && (payload.new as any).date === today) {
+            const record = payload.new as any;
+            setEmployee(prev => prev ? {
+              ...prev,
+              status: record.check_out_time 
+                ? 'checked-out' 
+                : record.check_in_time 
+                  ? 'checked-in' 
+                  : 'absent',
+              checkInTime: record.check_in_time 
+                ? new Date(record.check_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                : undefined,
+              checkOutTime: record.check_out_time
+                ? new Date(record.check_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                : undefined,
+            } : null);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employee, fetchMonthlyData]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDate(new Date()), 1000);
@@ -366,22 +426,24 @@ const EmployeeDashboard: React.FC = () => {
               
               {/* Day cells */}
               {monthlyData.map((dayData) => (
-                <div
+                <button
                   key={dayData.day}
-                  className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative transition-colors ${
+                  onClick={() => dayData.status !== 'future' && dayData.status !== 'weekend' && setSelectedDay(dayData)}
+                  disabled={dayData.status === 'future' || dayData.status === 'weekend'}
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative transition-all ${
                     dayData.isToday 
                       ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' 
                       : ''
                   } ${
                     dayData.status === 'weekend' 
-                      ? 'bg-muted/30 text-muted-foreground' 
+                      ? 'bg-muted/30 text-muted-foreground cursor-default' 
                       : dayData.status === 'future'
-                      ? 'bg-background text-muted-foreground/50'
+                      ? 'bg-background text-muted-foreground/50 cursor-default'
                       : dayData.status === 'absent'
-                      ? 'bg-destructive/20 text-destructive'
+                      ? 'bg-destructive/20 text-destructive hover:bg-destructive/30 cursor-pointer'
                       : dayData.isLate
-                      ? 'bg-secondary/40 text-secondary-foreground'
-                      : 'bg-accent/30 text-accent-foreground'
+                      ? 'bg-secondary/40 text-secondary-foreground hover:bg-secondary/50 cursor-pointer'
+                      : 'bg-accent/30 text-accent-foreground hover:bg-accent/40 cursor-pointer'
                   }`}
                 >
                   <span className="font-medium">{dayData.day}</span>
@@ -391,7 +453,7 @@ const EmployeeDashboard: React.FC = () => {
                   {dayData.status === 'absent' && (
                     <XCircle className="w-3 h-3 absolute bottom-0.5" />
                   )}
-                </div>
+                </button>
               ))}
             </div>
 
@@ -479,6 +541,137 @@ const EmployeeDashboard: React.FC = () => {
         {/* HR Policy Section */}
         <HRPolicyViewer />
       </main>
+
+      {/* Day Detail Dialog */}
+      <Dialog open={!!selectedDay} onOpenChange={() => setSelectedDay(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              {selectedDay && new Date(selectedDay.date).toLocaleDateString('en-US', { 
+                weekday: 'long',
+                month: 'long', 
+                day: 'numeric',
+                year: 'numeric'
+              })}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedDay && (
+            <div className="space-y-4">
+              {/* Status Badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Status:</span>
+                <Badge className={
+                  selectedDay.status === 'absent'
+                    ? 'bg-destructive/20 text-destructive'
+                    : selectedDay.isLate
+                    ? 'bg-secondary/40 text-secondary-foreground'
+                    : 'bg-accent/30 text-accent-foreground'
+                }>
+                  {selectedDay.status === 'absent' ? (
+                    <>
+                      <XCircle className="w-3 h-3 mr-1" />
+                      Absent
+                    </>
+                  ) : selectedDay.isLate ? (
+                    <>
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Late
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Present
+                    </>
+                  )}
+                </Badge>
+              </div>
+
+              {/* Time Details */}
+              {selectedDay.status === 'present' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="border-border/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-xs">Check In</span>
+                      </div>
+                      <p className="text-lg font-mono font-semibold text-foreground">
+                        {selectedDay.checkIn || '--:--'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border/50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-xs">Check Out</span>
+                      </div>
+                      <p className="text-lg font-mono font-semibold text-foreground">
+                        {selectedDay.checkOut || '--:--'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Working Hours */}
+              {selectedDay.status === 'present' && selectedDay.checkIn && selectedDay.checkOut && (
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Working Hours</span>
+                    <span className="font-medium text-foreground">
+                      {(() => {
+                        // Parse times and calculate duration
+                        const parseTime = (t: string) => {
+                          const [time, period] = t.split(' ');
+                          let [h, m] = time.split(':').map(Number);
+                          if (period === 'PM' && h !== 12) h += 12;
+                          if (period === 'AM' && h === 12) h = 0;
+                          return h * 60 + m;
+                        };
+                        const inMins = parseTime(selectedDay.checkIn!);
+                        const outMins = parseTime(selectedDay.checkOut!);
+                        const diff = outMins - inMins;
+                        const hours = Math.floor(diff / 60);
+                        const mins = diff % 60;
+                        return `${hours}h ${mins}m`;
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedDay.notes && (
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                  <p className="text-sm text-foreground">{selectedDay.notes}</p>
+                </div>
+              )}
+
+              {/* Late Warning */}
+              {selectedDay.isLate && (
+                <div className="p-3 rounded-lg bg-secondary/20 border border-secondary/30">
+                  <div className="flex items-center gap-2 text-secondary-foreground">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-sm font-medium">Arrived late on this day</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Absent Message */}
+              {selectedDay.status === 'absent' && (
+                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-center">
+                  <XCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
+                  <p className="text-sm text-destructive font-medium">No attendance record for this day</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
