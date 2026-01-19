@@ -15,8 +15,8 @@ export interface Employee {
   workEndTime?: string;
   workingHoursPerDay?: number;
   lateThresholdMinutes?: number;
-  // Facial recognition
-  faceDescriptor?: number[] | null;
+  // Facial recognition - array of descriptors for multi-angle recognition
+  faceDescriptor?: number[][] | null;
   // Weekend days (0=Sunday, 6=Saturday)
   weekendDays?: number[];
 }

@@ -8,6 +8,7 @@ interface FaceCaptureProps {
   onCancel?: () => void;
   mode?: 'register' | 'verify';
   existingDescriptor?: number[] | null;
+  existingDescriptors?: number[][] | null; // Multi-angle descriptors
   onVerified?: (match: boolean, distance: number) => void;
 }
 
@@ -16,6 +17,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({
   onCancel,
   mode = 'register',
   existingDescriptor,
+  existingDescriptors,
   onVerified,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -33,6 +35,7 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({
     error: modelError,
     detectFace,
     compareFaces,
+    compareFacesMultiple,
     descriptorToArray,
     arrayToDescriptor,
   } = useFaceRecognition();
@@ -102,21 +105,45 @@ export const FaceCapture: React.FC<FaceCaptureProps> = ({
       return;
     }
 
-    if (mode === 'verify' && existingDescriptor) {
-      const storedDescriptor = arrayToDescriptor(existingDescriptor);
-      const distance = compareFaces(descriptor, storedDescriptor);
-      const isMatch = distance < MATCH_THRESHOLD;
+    if (mode === 'verify') {
+      // Check against multiple descriptors first, then fall back to single
+      if (existingDescriptors && existingDescriptors.length > 0) {
+        const { distance } = compareFacesMultiple(descriptor, existingDescriptors);
+        const isMatch = distance < MATCH_THRESHOLD;
 
-      if (isMatch) {
-        setStatus('success');
-        setMessage(`Face verified! (Confidence: ${((1 - distance) * 100).toFixed(0)}%)`);
-        stopCamera();
-        onVerified?.(true, distance);
+        if (isMatch) {
+          setStatus('success');
+          setMessage(`Face verified! (Confidence: ${((1 - distance) * 100).toFixed(0)}%)`);
+          stopCamera();
+          onVerified?.(true, distance);
+        } else {
+          setStatus('error');
+          setMessage('Face does not match. Please try again.');
+          setCapturedImage(null);
+          onVerified?.(false, distance);
+        }
+      } else if (existingDescriptor) {
+        // Legacy single descriptor support
+        const storedDescriptor = arrayToDescriptor(existingDescriptor);
+        const distance = compareFaces(descriptor, storedDescriptor);
+        const isMatch = distance < MATCH_THRESHOLD;
+
+        if (isMatch) {
+          setStatus('success');
+          setMessage(`Face verified! (Confidence: ${((1 - distance) * 100).toFixed(0)}%)`);
+          stopCamera();
+          onVerified?.(true, distance);
+        } else {
+          setStatus('error');
+          setMessage('Face does not match. Please try again.');
+          setCapturedImage(null);
+          onVerified?.(false, distance);
+        }
       } else {
         setStatus('error');
-        setMessage('Face does not match. Please try again.');
+        setMessage('No face data on record for verification.');
         setCapturedImage(null);
-        onVerified?.(false, distance);
+        onVerified?.(false, 1);
       }
     } else {
       // Registration mode

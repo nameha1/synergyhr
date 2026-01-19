@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, User, Trash2 } from 'lucide-react';
+import { Camera, User, Trash2, Images } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -9,14 +9,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { FaceCapture } from './FaceCapture';
+import { MultiFaceCapture } from './MultiFaceCapture';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 
 interface FaceRegistrationDialogProps {
   employeeId: string;
   employeeName: string;
   hasFaceData: boolean;
+  faceDataCount?: number;
   onUpdate: () => void;
 }
 
@@ -24,21 +26,22 @@ export const FaceRegistrationDialog: React.FC<FaceRegistrationDialogProps> = ({
   employeeId,
   employeeName,
   hasFaceData,
+  faceDataCount = 0,
   onUpdate,
 }) => {
   const [open, setOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleCapture = async (descriptor: number[]) => {
+  const handleCapture = async (descriptors: number[][]) => {
     try {
       const { error } = await supabase
         .from('employees')
-        .update({ face_descriptor: descriptor })
+        .update({ face_descriptor: descriptors })
         .eq('id', employeeId);
 
       if (error) throw error;
 
-      toast.success(`Face registered for ${employeeName}`);
+      toast.success(`${descriptors.length} face angles registered for ${employeeName}`);
       setOpen(false);
       onUpdate();
     } catch (err) {
@@ -74,8 +77,13 @@ export const FaceRegistrationDialog: React.FC<FaceRegistrationDialogProps> = ({
           <Button variant="outline" size="sm" className="gap-2">
             {hasFaceData ? (
               <>
-                <User className="w-4 h-4" />
+                <Images className="w-4 h-4" />
                 Update Face
+                {faceDataCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {faceDataCount}
+                  </Badge>
+                )}
               </>
             ) : (
               <>
@@ -97,17 +105,18 @@ export const FaceRegistrationDialog: React.FC<FaceRegistrationDialogProps> = ({
           </Button>
         )}
       </div>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Register Face - {employeeName}</DialogTitle>
           <DialogDescription>
-            Capture the employee's face for check-in verification. Ensure good lighting and a clear view of the face.
+            Capture multiple face angles for better recognition accuracy. 
+            We recommend capturing at least 3 different angles (front, left, right).
           </DialogDescription>
         </DialogHeader>
-        <FaceCapture
-          onCapture={handleCapture}
+        <MultiFaceCapture
+          onComplete={handleCapture}
           onCancel={() => setOpen(false)}
-          mode="register"
+          minCaptures={3}
         />
       </DialogContent>
     </Dialog>

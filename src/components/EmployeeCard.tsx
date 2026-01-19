@@ -53,10 +53,10 @@ export const EmployeeCard = ({ employee, onCheckIn, onCheckOut, onScheduleUpdate
           <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
             {status.label}
           </span>
-          {employee.faceDescriptor && (
+          {employee.faceDescriptor && employee.faceDescriptor.length > 0 && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <Camera className="w-3 h-3" />
-              Face
+              Face ({employee.faceDescriptor.length})
             </span>
           )}
           {onScheduleUpdate && (
@@ -64,7 +64,8 @@ export const EmployeeCard = ({ employee, onCheckIn, onCheckOut, onScheduleUpdate
               <FaceRegistrationDialog
                 employeeId={employee.id}
                 employeeName={employee.name}
-                hasFaceData={!!employee.faceDescriptor}
+                hasFaceData={!!employee.faceDescriptor && employee.faceDescriptor.length > 0}
+                faceDataCount={employee.faceDescriptor?.length || 0}
                 onUpdate={onScheduleUpdate}
               />
               <EditEmployeeScheduleDialog
