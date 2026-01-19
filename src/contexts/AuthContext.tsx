@@ -47,7 +47,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     );
   };
 
-  const checkAdminRole = async (userId: string) => {
+  const checkAdminRole = async (userId: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase
         .from('user_roles')
@@ -60,7 +60,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Ignore abort errors (these can happen during navigation / route changes)
         if (isAbortLikeError(error) || error.code === '') {
           console.log('Admin check request was aborted (likely due to navigation)');
-          return null; // Return null to indicate we couldn't check
+          return false;
         }
         console.error('Error checking admin role:', error);
         return false;
@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Ignore abort errors
       if (isAbortLikeError(error)) {
         console.log('Admin check request was aborted (likely due to navigation)');
-        return null;
+        return false;
       }
       console.error('Error checking admin role:', error);
       return false;
@@ -93,9 +93,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // For other auth state changes (like page reload), check admin status
         const adminStatus = await checkAdminRole(session.user.id);
-        if (adminStatus !== null) {
-          setIsAdmin(adminStatus);
-        }
+        setIsAdmin(adminStatus);
       } else {
         setIsAdmin(false);
       }
@@ -113,9 +111,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (session?.user) {
           const adminStatus = await checkAdminRole(session.user.id);
-          if (adminStatus !== null) {
-            setIsAdmin(adminStatus);
-          }
+          setIsAdmin(adminStatus);
         }
 
         setLoading(false);
@@ -149,7 +145,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: error.message };
       }
 
-      // Ensure app state is updated immediately (avoid relying solely on onAuthStateChange)
+      // Ensure app state is updated immediately
       setSession(data.session ?? null);
       setUser(data.user ?? null);
 
@@ -158,40 +154,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { success: false, error: 'Login succeeded but no user was returned.' };
       }
 
-      // Role check with timeout to prevent infinite hanging
-      const checkWithTimeout = async (): Promise<boolean | null> => {
-        return new Promise(async (resolve) => {
-          // Set a 5 second timeout
-          const timeout = setTimeout(() => {
-            console.log('Admin check timed out');
-            resolve(null);
-          }, 5000);
+      // Role check - simple direct call with short timeout
+      const adminStatus = await checkAdminRole(data.user.id);
 
-          try {
-            const result = await checkAdminRole(data.user!.id);
-            clearTimeout(timeout);
-            resolve(result);
-          } catch (err) {
-            clearTimeout(timeout);
-            resolve(null);
-          }
-        });
-      };
-
-      const adminStatus = await checkWithTimeout();
-
-      if (adminStatus !== true) {
+      if (!adminStatus) {
         await supabase.auth.signOut();
         setSession(null);
         setUser(null);
         setIsAdmin(false);
         finish();
-
-        if (adminStatus === false) {
-          return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
-        }
-
-        return { success: false, error: 'Failed to verify admin access. Please try again.' };
+        return { success: false, error: 'You do not have admin access. Please use the Employee Portal.' };
       }
 
       setIsAdmin(true);
