@@ -38,7 +38,15 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
   const [workingHours, setWorkingHours] = useState('8');
   const [lateThreshold, setLateThreshold] = useState('15');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { departmentNames, loading: loadingDepartments } = useDepartments();
+  const { departmentNames, loading: loadingDepartments, refetch } = useDepartments();
+
+  // Refetch departments when dialog opens
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      refetch();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +95,7 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="gap-2">
           <UserPlus className="w-4 h-4" />
