@@ -3,6 +3,7 @@ import { Employee } from '@/types/employee';
 import { Button } from '@/components/ui/button';
 import { EditEmployeeScheduleDialog } from './EditEmployeeScheduleDialog';
 import { FaceRegistrationDialog } from './FaceRegistrationDialog';
+import { AttendanceHistoryDialog } from './AttendanceHistoryDialog';
 
 interface EmployeeCardProps {
   employee: Employee;
@@ -99,7 +100,8 @@ export const EmployeeCard = ({ employee, onCheckIn, onCheckOut, onScheduleUpdate
             )}
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <AttendanceHistoryDialog employee={employee} />
             {employee.status === 'absent' || employee.status === 'checked-out' ? (
               <Button 
                 size="sm" 
