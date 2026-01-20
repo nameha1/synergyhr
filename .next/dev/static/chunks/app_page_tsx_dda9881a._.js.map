@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/tzl/Documents/GitHub/synergyhr/app/page.tsx"],"sourcesContent":["'use client'\n\nexport default function Home() {\n  if (typeof window !== 'undefined') {\n    window.location.href = '/employee'\n  }\n  return null\n}\n"],"names":[],"mappings":";;;;AAAA;AAEe,SAAS;IACtB,wCAAmC;QACjC,OAAO,QAAQ,CAAC,IAAI,GAAG;IACzB;IACA,OAAO;AACT;KALwB"}}]
+}

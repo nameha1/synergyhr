@@ -1,5 +1,19 @@
 import crypto from "crypto";
 
+// Add CORS headers to response
+export function addCorsHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, x-office-pass');
+  
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
 type OfficeSettings = {
   allowedASNs: Set<number>;
   allowedCIDRs: string[];
