@@ -1,8 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 
-// Use window.location.origin to ensure models are loaded from the same domain
-const MODEL_URL = `${window.location.origin}/models`;
+// Use absolute path for production, relative for dev
+const getModelUrl = () => {
+  if (import.meta.env.DEV) {
+    return '/models';
+  }
+  return `${window.location.protocol}//${window.location.host}/models`;
+};
+
+const MODEL_URL = getModelUrl();
 
 export interface FaceRecognitionState {
   isModelLoaded: boolean;
@@ -24,14 +31,17 @@ export const useFaceRecognition = () => {
       loadingRef.current = true;
 
       try {
+        console.log('[useFaceRecognition] Loading models from:', MODEL_URL);
         await Promise.all([
           faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ]);
+        console.log('[useFaceRecognition] Models loaded successfully');
         setState({ isModelLoaded: true, isLoading: false, error: null });
       } catch (err) {
-        console.error('Error loading face-api models:', err);
+        console.error('[useFaceRecognition] Error loading face-api models:', err);
+        console.error('[useFaceRecognition] Model URL was:', MODEL_URL);
         setState({
           isModelLoaded: false,
           isLoading: false,
