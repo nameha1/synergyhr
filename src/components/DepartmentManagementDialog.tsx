@@ -80,9 +80,10 @@ export const DepartmentManagementDialog = ({ onUpdate }: DepartmentManagementDia
       setNewDescription('');
       fetchDepartments();
       onUpdate?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding department:', error);
-      if (error.code === '23505') {
+      const err = error as { code?: string };
+      if (err?.code === '23505') {
         toast.error('Department already exists');
       } else {
         toast.error('Failed to add department');
@@ -114,9 +115,10 @@ export const DepartmentManagementDialog = ({ onUpdate }: DepartmentManagementDia
       setEditingId(null);
       fetchDepartments();
       onUpdate?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating department:', error);
-      if (error.code === '23505') {
+      const err = error as { code?: string };
+      if (err?.code === '23505') {
         toast.error('Department name already exists');
       } else {
         toast.error('Failed to update department');

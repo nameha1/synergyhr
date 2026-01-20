@@ -65,9 +65,10 @@ export const HRPolicyUpload = () => {
 
       toast.success('HR Policy uploaded successfully');
       fetchPolicies();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error uploading:', error);
-      toast.error(error.message || 'Failed to upload file');
+      const message = error instanceof Error ? error.message : 'Failed to upload file';
+      toast.error(message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -86,7 +87,7 @@ export const HRPolicyUpload = () => {
 
       toast.success('Policy deleted');
       fetchPolicies();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting:', error);
       toast.error('Failed to delete file');
     }

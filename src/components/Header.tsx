@@ -1,20 +1,22 @@
-import { Wifi, WifiOff, LogOut } from 'lucide-react';
+import { Loader2, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
-  isConnected: boolean;
-  ipAddress: string;
+  isConnected: boolean | null;
+  ipAddress?: string | null;
+  isChecking?: boolean;
 }
 
-export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
+export const Header = ({ isConnected, ipAddress, isChecking }: HeaderProps) => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
+  const displayIp = ipAddress || 'Unknown';
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/admin/login');
   };
 
   return (
@@ -26,15 +28,22 @@ export const Header = ({ isConnected, ipAddress }: HeaderProps) => {
         </div>
         
         <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
-            isConnected 
-              ? 'bg-accent text-accent-foreground' 
-              : 'bg-destructive/10 text-destructive'
-          }`}>
-            {isConnected ? (
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+              isConnected === false
+                ? 'bg-destructive/10 text-destructive'
+                : 'bg-accent text-accent-foreground'
+            }`}
+          >
+            {isChecking ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="font-medium">Checking network...</span>
+              </>
+            ) : isConnected ? (
               <>
                 <Wifi className="w-4 h-4" />
-                <span className="font-medium">Office IP: {ipAddress}</span>
+                <span className="font-medium">Office IP: {displayIp}</span>
               </>
             ) : (
               <>

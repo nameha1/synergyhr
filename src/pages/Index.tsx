@@ -6,26 +6,50 @@ import { EmployeeCard } from '@/components/EmployeeCard';
 import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
 import { DepartmentManagementDialog } from '@/components/DepartmentManagementDialog';
 import { OfficeSettingsDialog } from '@/components/OfficeSettingsDialog';
+import { HolidayManagementDialog } from '@/components/HolidayManagementDialog';
 import { SearchFilter } from '@/components/SearchFilter';
 import { HRPolicyUpload } from '@/components/HRPolicyUpload';
+import { MonthlyHoursSummary } from '@/components/MonthlyHoursSummary';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
-import { Employee, AttendanceStats } from '@/types/employee';
+import { Employee, AttendanceStats, AttendanceStatus } from '@/types/employee';
+import { useLocationVerification } from '@/hooks/useLocationVerification';
 import { toast } from 'sonner';
 
 // Map database employee to frontend Employee type
-const mapDbEmployee = (dbEmployee: any): Employee => ({
+type DbEmployee = {
+  id: string;
+  employee_id: string;
+  name: string;
+  email: string;
+  department: string;
+  avatar_url?: string | null;
+  work_start_time?: string | null;
+  work_end_time?: string | null;
+  working_hours_per_day?: number | null;
+  late_threshold_minutes?: number | null;
+  face_descriptor?: number[][] | null;
+  weekend_days?: string[] | null;
+};
+
+const mapDbEmployee = (dbEmployee: DbEmployee): Employee => ({
   id: dbEmployee.id,
   employeeId: dbEmployee.employee_id,
   name: dbEmployee.name,
   email: dbEmployee.email,
   department: dbEmployee.department,
   avatar: dbEmployee.avatar_url,
-  status: 'absent', // Will be updated based on today's attendance
+  status: 'absent', // Will be updated based on the selected date's attendance
+  isLate: false,
   workStartTime: dbEmployee.work_start_time,
   workEndTime: dbEmployee.work_end_time,
   workingHoursPerDay: dbEmployee.working_hours_per_day,
   lateThresholdMinutes: dbEmployee.late_threshold_minutes,
   faceDescriptor: dbEmployee.face_descriptor,
+  weekendDays: dbEmployee.weekend_days,
 });
 
 const Index = () => {
@@ -34,10 +58,20 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const getToday = () => new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(getToday);
+  const {
+    isVerifying: isVerifyingLocation,
+    ipAllowed,
+    locationAllowed,
+    currentIp,
+    error: locationError,
+    verifyLocation,
+  } = useLocationVerification();
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (date?: string) => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const targetDate = date ?? selectedDate ?? getToday();
       
       // Fetch employees
       const { data: employeesData, error: employeesError } = await supabase
@@ -47,11 +81,11 @@ const Index = () => {
 
       if (employeesError) throw employeesError;
 
-      // Fetch today's attendance
+      // Fetch attendance for the selected date
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
         .select('*')
-        .eq('date', today);
+        .eq('date', targetDate);
 
       if (attendanceError) throw attendanceError;
 
@@ -65,6 +99,8 @@ const Index = () => {
         const employee = mapDbEmployee(emp);
         
         if (attendance) {
+          employee.attendanceId = attendance.id;
+          employee.isLate = attendance.is_late;
           if (attendance.check_out_time) {
             employee.status = 'checked-out';
             employee.checkOutTime = new Date(attendance.check_out_time).toLocaleTimeString('en-US', {
@@ -97,8 +133,18 @@ const Index = () => {
   };
 
   useEffect(() => {
-    fetchEmployees();
-  }, []);
+    fetchEmployees(selectedDate);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    verifyLocation();
+  }, [verifyLocation]);
+
+  useEffect(() => {
+    if (locationError) {
+      toast.error(locationError);
+    }
+  }, [locationError]);
 
   const departments = useMemo(() => {
     return [...new Set(employees.map((emp) => emp.department))];
@@ -125,7 +171,11 @@ const Index = () => {
   }, [employees, searchQuery, statusFilter, departmentFilter]);
 
   const handleCheckIn = async (id: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getToday();
+    if (selectedDate !== today) {
+      toast.error('Check-ins are only available for today.');
+      return;
+    }
     const now = new Date().toISOString();
     const employee = employees.find((e) => e.id === id);
     
@@ -151,7 +201,7 @@ const Index = () => {
       if (error) throw error;
 
       toast.success(isLate ? 'Checked in (Late)' : 'Checked in successfully');
-      fetchEmployees();
+      fetchEmployees(selectedDate);
     } catch (error) {
       console.error('Error checking in:', error);
       toast.error('Failed to check in');
@@ -159,7 +209,11 @@ const Index = () => {
   };
 
   const handleCheckOut = async (id: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getToday();
+    if (selectedDate !== today) {
+      toast.error('Check-outs are only available for today.');
+      return;
+    }
     const now = new Date().toISOString();
 
     try {
@@ -172,10 +226,42 @@ const Index = () => {
       if (error) throw error;
 
       toast.success('Checked out successfully');
-      fetchEmployees();
+      fetchEmployees(selectedDate);
     } catch (error) {
       console.error('Error checking out:', error);
       toast.error('Failed to check out');
+    }
+  };
+
+  const handleToggleLate = async (employee: Employee) => {
+    const nextIsLate = !employee.isLate;
+
+    try {
+      if (employee.attendanceId) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .update({ is_late: nextIsLate, status: nextIsLate ? 'late' : 'present' })
+          .eq('id', employee.attendanceId);
+
+        if (error) throw error;
+      } else if (nextIsLate) {
+        const { error } = await supabase.from('attendance_records').insert({
+          employee_id: employee.id,
+          date: selectedDate,
+          status: 'late',
+          is_late: true,
+        });
+
+        if (error) throw error;
+      } else {
+        return;
+      }
+
+      toast.success(nextIsLate ? 'Late flag added' : 'Late flag removed');
+      fetchEmployees(selectedDate);
+    } catch (error) {
+      console.error('Error updating late flag:', error);
+      toast.error('Failed to update late flag');
     }
   };
 
@@ -198,17 +284,23 @@ const Index = () => {
       if (employeeError) throw employeeError;
 
       toast.success('Employee deleted successfully');
-      fetchEmployees();
+      fetchEmployees(selectedDate);
     } catch (error) {
       console.error('Error deleting employee:', error);
       toast.error('Failed to delete employee');
     }
   };
 
+  const statusBadgeConfig: Record<AttendanceStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+    'checked-in': { label: 'Checked In', variant: 'default' },
+    'checked-out': { label: 'Checked Out', variant: 'secondary' },
+    'absent': { label: 'Absent', variant: 'outline' },
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <Header isConnected={true} ipAddress="Connected" />
+        <Header isConnected={null} ipAddress={null} isChecking={true} />
         <main className="container mx-auto px-4 py-6 max-w-6xl">
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -220,7 +312,15 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header isConnected={true} ipAddress="Connected" />
+      <Header
+        isConnected={
+          ipAllowed === null && locationAllowed === null
+            ? null
+            : ipAllowed !== false && locationAllowed !== false
+        }
+        ipAddress={currentIp}
+        isChecking={isVerifyingLocation}
+      />
 
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         {/* Stats Section */}
@@ -251,6 +351,105 @@ const Index = () => {
           />
         </div>
 
+        <SearchFilter
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          statusFilter={statusFilter}
+          onStatusChange={setStatusFilter}
+          departmentFilter={departmentFilter}
+          onDepartmentChange={setDepartmentFilter}
+          departments={departments}
+        />
+
+        {/* Daily Attendance Table */}
+        <div className="space-y-4 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-foreground">Daily Attendance</h2>
+              <p className="text-sm text-muted-foreground">
+                Viewing attendance for {selectedDate}
+              </p>
+            </div>
+            <div className="w-full sm:w-[220px]">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="attendance-date">
+                Select date
+              </label>
+              <Input
+                id="attendance-date"
+                type="date"
+                value={selectedDate}
+                max={getToday()}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  if (nextDate) {
+                    setSelectedDate(nextDate);
+                  }
+                }}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Check In</TableHead>
+                  <TableHead>Check Out</TableHead>
+                  <TableHead>Late Flag</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEmployees.map((employee) => {
+                  const statusConfig = statusBadgeConfig[employee.status];
+                  return (
+                    <TableRow key={employee.id}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">{employee.name}</span>
+                          <span className="text-xs text-muted-foreground">{employee.employeeId}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{employee.department}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                          {employee.isLate && <Badge variant="destructive">Late</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {employee.checkInTime || '--:--'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {employee.checkOutTime || '--:--'}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant={employee.isLate ? 'destructive' : 'outline'}
+                          onClick={() => handleToggleLate(employee)}
+                        >
+                          {employee.isLate ? 'Late' : 'Mark Late'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredEmployees.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
+                      No employees found matching your criteria.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
         {/* Employees Section */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -262,20 +461,11 @@ const Index = () => {
             </div>
             <div className="flex gap-2">
               <OfficeSettingsDialog />
+              <HolidayManagementDialog />
               <DepartmentManagementDialog onUpdate={fetchEmployees} />
               <AddEmployeeDialog onAdd={fetchEmployees} />
             </div>
           </div>
-
-          <SearchFilter
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            statusFilter={statusFilter}
-            onStatusChange={setStatusFilter}
-            departmentFilter={departmentFilter}
-            onDepartmentChange={setDepartmentFilter}
-            departments={departments}
-          />
 
           <div className="grid gap-4 md:grid-cols-2">
             {filteredEmployees.map((employee, index) => (
@@ -297,6 +487,10 @@ const Index = () => {
               <p>No employees found matching your criteria.</p>
             </div>
           )}
+        </div>
+
+        <div className="mt-8">
+          <MonthlyHoursSummary employees={employees} />
         </div>
 
         {/* HR Policy Section */}

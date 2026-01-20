@@ -85,6 +85,27 @@ export type Database = {
         }
         Relationships: []
       }
+      holidays: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          name: string | null
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          name?: string | null
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          name?: string | null
+        }
+        Relationships: []
+      }
       employees: {
         Row: {
           avatar_url: string | null

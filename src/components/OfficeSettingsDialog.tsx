@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Settings2, MapPin, Wifi, Plus, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,19 +32,48 @@ export const OfficeSettingsDialog = () => {
   const [allowedIps, setAllowedIps] = useState<string[]>(['*']);
   const [newIp, setNewIp] = useState('');
 
+  // ASN/CIDR Settings
+  const [allowedAsns, setAllowedAsns] = useState<string[]>([]);
+  const [newAsn, setNewAsn] = useState('');
+  const [allowedCidrs, setAllowedCidrs] = useState<string[]>([]);
+  const [newCidr, setNewCidr] = useState('');
+
   // Location Settings
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [radius, setRadius] = useState('100');
 
-  useEffect(() => {
-    if (open) {
-      fetchSettings();
+  const normalizeStringList = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item).trim()).filter(Boolean);
     }
-  }, [open]);
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed.map((item) => String(item).trim()).filter(Boolean);
+          }
+        } catch {
+          return [trimmed];
+        }
+      }
+      return [trimmed];
+    }
+    return [];
+  };
 
-  const fetchSettings = async () => {
+  const normalizeAsnList = (value: unknown): string[] => {
+    return normalizeStringList(value)
+      .map((item) => item.replace(/[^0-9]/g, ''))
+      .filter(Boolean)
+      .map((digits) => `AS${digits}`);
+  };
+
+  const fetchSettings = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -54,10 +83,23 @@ export const OfficeSettingsDialog = () => {
       if (error) throw error;
 
       const ipSetting = data?.find((s) => s.setting_key === 'allowed_ips');
+      const asnSetting = data?.find((s) => s.setting_key === 'allowed_asns');
+      const cidrSetting = data?.find((s) => s.setting_key === 'allowed_cidrs');
       const locationSetting = data?.find((s) => s.setting_key === 'office_location');
 
-      if (ipSetting?.setting_value) {
-        setAllowedIps(ipSetting.setting_value as unknown as string[]);
+      if (ipSetting?.setting_value !== undefined) {
+        const parsedIps = normalizeStringList(ipSetting.setting_value);
+        setAllowedIps(parsedIps.length ? parsedIps : ['*']);
+      }
+
+      if (asnSetting?.setting_value !== undefined) {
+        const parsedAsns = normalizeAsnList(asnSetting.setting_value);
+        setAllowedAsns(parsedAsns);
+      }
+
+      if (cidrSetting?.setting_value !== undefined) {
+        const parsedCidrs = normalizeStringList(cidrSetting.setting_value);
+        setAllowedCidrs(parsedCidrs);
       }
 
       if (locationSetting?.setting_value) {
@@ -73,7 +115,13 @@ export const OfficeSettingsDialog = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      fetchSettings();
+    }
+  }, [open, fetchSettings]);
 
   const handleAddIp = () => {
     if (!newIp.trim()) return;
@@ -99,6 +147,36 @@ export const OfficeSettingsDialog = () => {
     setAllowedIps(['*']);
   };
 
+  const handleAddAsn = () => {
+    const digits = newAsn.replace(/[^0-9]/g, '');
+    if (!digits) return;
+    const normalized = `AS${digits}`;
+    if (allowedAsns.includes(normalized)) {
+      toast.error('ASN already in list');
+      return;
+    }
+    setAllowedAsns([...allowedAsns, normalized]);
+    setNewAsn('');
+  };
+
+  const handleRemoveAsn = (asn: string) => {
+    setAllowedAsns(allowedAsns.filter((item) => item !== asn));
+  };
+
+  const handleAddCidr = () => {
+    if (!newCidr.trim()) return;
+    if (allowedCidrs.includes(newCidr.trim())) {
+      toast.error('CIDR already in list');
+      return;
+    }
+    setAllowedCidrs([...allowedCidrs, newCidr.trim()]);
+    setNewCidr('');
+  };
+
+  const handleRemoveCidr = (cidr: string) => {
+    setAllowedCidrs(allowedCidrs.filter((item) => item !== cidr));
+  };
+
   const handleGetCurrentLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -119,52 +197,81 @@ export const OfficeSettingsDialog = () => {
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Update IP settings using upsert to handle both insert and update
-      const { error: ipError } = await supabase
-        .from('office_settings')
-        .upsert(
-          { 
-            setting_key: 'allowed_ips', 
-            setting_value: allowedIps,
-            description: 'List of allowed IP addresses for check-in/out. Use * to allow all.'
-          },
-          { onConflict: 'setting_key' }
-        );
+      const pendingAsnDigits = newAsn.replace(/[^0-9]/g, '');
+      const pendingAsn = pendingAsnDigits ? `AS${pendingAsnDigits}` : '';
+      const combinedAsns =
+        pendingAsn && !allowedAsns.includes(pendingAsn)
+          ? [...allowedAsns, pendingAsn]
+          : allowedAsns;
+      const pendingCidr = newCidr.trim();
+      const combinedCidrs =
+        pendingCidr && !allowedCidrs.includes(pendingCidr)
+          ? [...allowedCidrs, pendingCidr]
+          : allowedCidrs;
 
-      if (ipError) {
-        console.error('IP settings error:', ipError);
-        throw ipError;
-      }
+      // Update IP settings using upsert to handle both insert and update
+      const normalizedIps = normalizeStringList(allowedIps);
+      const safeIps = normalizedIps.length ? normalizedIps : ['*'];
+      setAllowedIps(safeIps);
+
+      const normalizedAsns = normalizeAsnList(combinedAsns);
+      setAllowedAsns(normalizedAsns);
+
+      const normalizedCidrs = normalizeStringList(combinedCidrs);
+      setAllowedCidrs(normalizedCidrs);
+      setNewAsn('');
+      setNewCidr('');
 
       // Update location settings using upsert
-      const locationValue = {
+      const locationValue: OfficeLocation = {
         latitude: parseFloat(latitude) || 0,
         longitude: parseFloat(longitude) || 0,
         radius_meters: parseInt(radius) || 100,
         enabled: locationEnabled,
       };
 
-      const { error: locError } = await supabase
-        .from('office_settings')
-        .upsert(
-          { 
-            setting_key: 'office_location', 
-            setting_value: locationValue as any,
-            description: 'Office geo-location settings for check-in/out'
-          },
-          { onConflict: 'setting_key' }
-        );
+      const upsertPayloads = [
+        {
+          setting_key: 'allowed_ips',
+          setting_value: safeIps,
+          description: 'List of allowed IP addresses for check-in/out. Use * to allow all.'
+        },
+        {
+          setting_key: 'allowed_asns',
+          setting_value: normalizedAsns,
+          description: 'List of allowed ASNs for check-in/out. Example: AS15169'
+        },
+        {
+          setting_key: 'allowed_cidrs',
+          setting_value: normalizedCidrs,
+          description: 'List of allowed CIDR ranges for check-in/out. Example: 203.0.113.0/24'
+        },
+        {
+          setting_key: 'office_location',
+          setting_value: locationValue,
+          description: 'Office geo-location settings for check-in/out'
+        }
+      ];
 
-      if (locError) {
-        console.error('Location settings error:', locError);
-        throw locError;
+      const results = await Promise.all(
+        upsertPayloads.map((payload) =>
+          supabase.from('office_settings').upsert(payload, { onConflict: 'setting_key' })
+        )
+      );
+
+      const failed = results.find((result) => result.error);
+      if (failed?.error) {
+        console.error('Office settings save error:', failed.error);
+        throw failed.error;
       }
 
       toast.success('Office settings updated');
+      await fetchSettings();
       setOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating settings:', error);
-      toast.error(error?.message || 'Failed to update settings');
+      const message = error instanceof Error ? error.message : 'Failed to update settings';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -240,6 +347,87 @@ export const OfficeSettingsDialog = () => {
                   Allow All IPs
                 </Button>
               )}
+            </div>
+
+            {/* ASN/CIDR Settings */}
+            <div className="space-y-4 border-t pt-4">
+              <h3 className="font-medium">Network Provider (ASN) & CIDR</h3>
+
+              <div className="space-y-2">
+                <Label htmlFor="asn-input">Allowed ASNs</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="asn-input"
+                    placeholder="AS15169"
+                    value={newAsn}
+                    onChange={(e) => setNewAsn(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddAsn()}
+                  />
+                  <Button onClick={handleAddAsn} size="icon">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {allowedAsns.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No ASN restrictions set.</p>
+                  ) : (
+                    allowedAsns.map((asn) => (
+                      <div
+                        key={asn}
+                        className="flex items-center justify-between p-2 bg-muted rounded-lg"
+                      >
+                        <span className="font-mono text-sm">{asn}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleRemoveAsn(asn)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cidr-input">Allowed CIDR Ranges</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="cidr-input"
+                    placeholder="203.0.113.0/24"
+                    value={newCidr}
+                    onChange={(e) => setNewCidr(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddCidr()}
+                  />
+                  <Button onClick={handleAddCidr} size="icon">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {allowedCidrs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No CIDR restrictions set.</p>
+                  ) : (
+                    allowedCidrs.map((cidr) => (
+                      <div
+                        key={cidr}
+                        className="flex items-center justify-between p-2 bg-muted rounded-lg"
+                      >
+                        <span className="font-mono text-sm">{cidr}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => handleRemoveCidr(cidr)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Geo-Location Settings */}

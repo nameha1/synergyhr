@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee } from '@/types/employee';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
+import { useOfficePass } from '@/hooks/useOfficePass';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,12 @@ const EmployeeLogin: React.FC = () => {
     verifyLocation,
     reset: resetLocation,
   } = useLocationVerification();
+  const {
+    status: officeGateStatus,
+    checkOfficePass,
+    getValidPass,
+    resetOfficePass,
+  } = useOfficePass();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -128,6 +135,14 @@ const EmployeeLogin: React.FC = () => {
         
         setCurrentEmployee(mappedEmployee);
         sessionStorage.setItem('currentEmployeeId', employee.employee_id);
+        const pass = await checkOfficePass();
+        if (!pass) {
+          toast({
+            title: "Office network required",
+            description: "Please connect to the office network to access attendance features.",
+            variant: "destructive",
+          });
+        }
         toast({
           title: `Welcome, ${employee.name.split(' ')[0]}!`,
           description: "You can now check in or view your dashboard.",
@@ -167,6 +182,24 @@ const EmployeeLogin: React.FC = () => {
     const isLate = new Date() > startTime;
 
     try {
+      const pass = await getValidPass();
+      if (!pass) {
+        toast({
+          title: "Office network required",
+          description: "Please connect to the office network to check in.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const guardResponse = await fetch('/api/attendance/checkin', {
+        method: 'POST',
+        headers: { 'x-office-pass': pass },
+      });
+      if (!guardResponse.ok) {
+        throw new Error('Office network check failed');
+      }
+
       const { error } = await supabase.from('attendance_records').upsert({
         employee_id: currentEmployee.id,
         date: today,
@@ -204,6 +237,24 @@ const EmployeeLogin: React.FC = () => {
     const now = new Date().toISOString();
 
     try {
+      const pass = await getValidPass();
+      if (!pass) {
+        toast({
+          title: "Office network required",
+          description: "Please connect to the office network to check out.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const guardResponse = await fetch('/api/attendance/checkin', {
+        method: 'POST',
+        headers: { 'x-office-pass': pass },
+      });
+      if (!guardResponse.ok) {
+        throw new Error('Office network check failed');
+      }
+
       const { error } = await supabase
         .from('attendance_records')
         .update({ check_out_time: now })
@@ -235,7 +286,16 @@ const EmployeeLogin: React.FC = () => {
   // Start verification flow for check-in/check-out
   const startAttendanceAction = (action: 'checkin' | 'checkout') => {
     if (!currentEmployee) return;
-    
+
+    if (officeGateStatus !== 'allowed') {
+      toast({
+        title: "Office network required",
+        description: "Please connect to the office network to check in/out.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setPendingAction(action);
     resetLocation();
     
@@ -253,7 +313,16 @@ const EmployeeLogin: React.FC = () => {
   // Start dashboard access flow (face verification only)
   const startDashboardAccess = () => {
     if (!currentEmployee) return;
-    
+
+    if (officeGateStatus !== 'allowed') {
+      toast({
+        title: "Office network required",
+        description: "Please connect to the office network to access the dashboard.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // If employee has face data, require face verification for dashboard
     if (currentEmployee.faceDescriptor && currentEmployee.faceDescriptor.length > 0) {
       setPendingAction('dashboard');
@@ -318,6 +387,7 @@ const EmployeeLogin: React.FC = () => {
     setPendingAction(null);
     setVerificationStep(null);
     resetLocation();
+    resetOfficePass();
   };
 
   const cancelVerification = () => {
@@ -328,11 +398,17 @@ const EmployeeLogin: React.FC = () => {
   };
 
   // Determine connection status based on location verification results
-  const isConnected = ipAllowed !== false;
+  const isConnected = officeGateStatus === 'allowed' ? true : officeGateStatus === 'blocked' ? false : ipAllowed !== false;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md relative">
+        {/* Admin Portal Link */}
+        <div className="absolute -top-12 right-0">
+          <Link to="/admin/login" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+            Admin Portal →
+          </Link>
+        </div>
         {/* Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-3">
@@ -526,7 +602,7 @@ const EmployeeLogin: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <Button
                     onClick={() => startAttendanceAction('checkin')}
-                    disabled={currentEmployee.status === 'checked-in' || isVerifyingLocation}
+                    disabled={officeGateStatus !== 'allowed' || currentEmployee.status === 'checked-in' || isVerifyingLocation}
                     className="h-14 text-base"
                     variant={currentEmployee.status === 'checked-in' ? 'outline' : 'default'}
                   >
@@ -541,7 +617,7 @@ const EmployeeLogin: React.FC = () => {
                   </Button>
                   <Button
                     onClick={() => startAttendanceAction('checkout')}
-                    disabled={currentEmployee.status !== 'checked-in' || isVerifyingLocation}
+                    disabled={officeGateStatus !== 'allowed' || currentEmployee.status !== 'checked-in' || isVerifyingLocation}
                     variant="outline"
                     className="h-14 text-base"
                   >
@@ -561,6 +637,7 @@ const EmployeeLogin: React.FC = () => {
                   variant="secondary" 
                   className="w-full h-11"
                   onClick={startDashboardAccess}
+                  disabled={officeGateStatus !== 'allowed'}
                 >
                   <LayoutDashboard className="w-4 h-4 mr-2" />
                   View My Dashboard
@@ -581,7 +658,7 @@ const EmployeeLogin: React.FC = () => {
 
         {/* Admin Link */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          <Link to="/login" className="hover:text-primary transition-colors">
+          <Link to="/admin/login" className="hover:text-primary transition-colors">
             Admin Login →
           </Link>
         </p>

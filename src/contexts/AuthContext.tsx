@@ -36,15 +36,56 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Track if we just logged in (to skip redundant admin check in onAuthStateChange)
   const justLoggedIn = useRef(false);
 
-  const isAbortLikeError = (err: any) => {
-    const msg = String(err?.message ?? '').toLowerCase();
+  const isAbortLikeError = (err: unknown) => {
+    const message = err instanceof Error ? err.message : String((err as { message?: string }).message ?? '');
+    const msg = message.toLowerCase();
+    const name = (err as { name?: string }).name;
     return (
-      err?.name === 'AbortError' ||
+      name === 'AbortError' ||
       msg.includes('aborterror') ||
       msg.includes('signal is aborted') ||
       msg.includes('aborted without reason') ||
       msg.includes('the operation was aborted')
     );
+  };
+
+  const getErrorCode = (err: unknown) => {
+    if (typeof err === 'object' && err !== null && 'code' in err) {
+      const code = (err as { code?: string | number }).code;
+      return code !== undefined ? String(code) : undefined;
+    }
+    return undefined;
+  };
+
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) return err.message;
+    return String((err as { message?: string }).message ?? 'Unknown error');
+  };
+
+  const withTimeout = async <T,>(
+    promise: Promise<T>,
+    ms: number,
+    fallback: T
+  ): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<T>((resolve) => {
+      timeoutId = setTimeout(() => resolve(fallback), ms);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  };
+
+  const safeCheckAdminRole = async (userId: string): Promise<boolean | null> => {
+    try {
+      const result = await withTimeout(checkAdminRole(userId), 8000, null);
+      return result;
+    } catch (error) {
+      console.error('Admin check failed:', error);
+      return null;
+    }
   };
 
   const checkAdminRole = async (userId: string): Promise<boolean> => {
@@ -58,7 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error) {
         // Ignore abort errors (these can happen during navigation / route changes)
-        if (isAbortLikeError(error) || error.code === '') {
+        if (isAbortLikeError(error) || getErrorCode(error) === '') {
           console.log('Admin check request was aborted (likely due to navigation)');
           return false;
         }
@@ -66,7 +107,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return false;
       }
       return !!data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Ignore abort errors
       if (isAbortLikeError(error)) {
         console.log('Admin check request was aborted (likely due to navigation)');
@@ -78,51 +119,77 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
-    // Set up auth state listener BEFORE checking session
+    let mounted = true;
+    let initialCheckDone = false;
+
+    // Check initial session first
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Initial session check:', session?.user?.id);
+        
+        if (!mounted) return;
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          const adminStatus = await safeCheckAdminRole(session.user.id);
+          if (mounted && adminStatus !== null) {
+            setIsAdmin(adminStatus);
+          }
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (err) {
+        if (!isAbortLikeError(err)) {
+          console.error('Initial session check failed:', err);
+        }
+      } finally {
+        if (mounted) {
+          initialCheckDone = true;
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (!mounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        // Skip admin check while login() is verifying admin role; it will finalize loading/isAdmin.
+        // Skip admin check while login() is verifying admin role
         if (justLoggedIn.current) {
           console.log('Skipping admin check - login in progress');
           return;
         }
 
-        // For other auth state changes (like page reload), check admin status
-        const adminStatus = await checkAdminRole(session.user.id);
-        setIsAdmin(adminStatus);
+        // Check admin status
+        const adminStatus = await safeCheckAdminRole(session.user.id);
+        if (mounted && adminStatus !== null) {
+          setIsAdmin(adminStatus);
+        }
       } else {
         setIsAdmin(false);
       }
 
-      setLoading(false);
+      // Only update loading if initial check is done
+      if (initialCheckDone && mounted) {
+        setLoading(false);
+      }
     });
 
-    // Check initial session
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
-        console.log('Initial session check:', session?.user?.id);
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const adminStatus = await checkAdminRole(session.user.id);
-          setIsAdmin(adminStatus);
-        }
-
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (isAbortLikeError(err)) return;
-        console.error('Initial session check failed:', err);
-        setLoading(false);
-      });
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -155,7 +222,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       // Role check - simple direct call with short timeout
-      const adminStatus = await checkAdminRole(data.user.id);
+      const adminStatus = await withTimeout(checkAdminRole(data.user.id), 8000, false);
 
       if (!adminStatus) {
         await supabase.auth.signOut();
@@ -169,12 +236,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsAdmin(true);
       finish();
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       finish();
       if (isAbortLikeError(error)) {
         return { success: false, error: 'Request was interrupted. Please try again.' };
       }
-      return { success: false, error: error.message };
+      return { success: false, error: getErrorMessage(error) };
     }
   };
 
@@ -184,7 +251,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: `${window.location.origin}/admin/login`,
         },
       });
 
@@ -193,8 +260,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: getErrorMessage(error) };
     }
   };
 

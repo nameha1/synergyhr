@@ -8,6 +8,14 @@ interface OfficeLocation {
   enabled: boolean;
 }
 
+interface IpinfoLiteResp {
+  ip?: string;
+  asn?: string;
+  as_name?: string;
+  country?: string;
+  country_code?: string;
+}
+
 interface LocationVerificationState {
   isVerifying: boolean;
   ipAllowed: boolean | null;
@@ -52,6 +60,73 @@ export const useLocationVerification = () => {
     });
   }, []);
 
+  const normalizeStringList = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed.map((item) => String(item).trim()).filter(Boolean);
+          }
+        } catch {
+          return [trimmed];
+        }
+      }
+      return [trimmed];
+    }
+    return [];
+  };
+
+  const normalizeAsnList = (value: unknown): number[] => {
+    return normalizeStringList(value)
+      .map((item) => item.replace(/[^0-9]/g, ''))
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item));
+  };
+
+  const ipv4ToInt = (ip: string): number | null => {
+    const parts = ip.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+      return null;
+    }
+    return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
+  };
+
+  const cidrContainsIPv4 = (cidr: string, ip: string): boolean => {
+    const [netStr, bitsStr] = cidr.split('/');
+    const bits = Number(bitsStr);
+    if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+
+    const net = ipv4ToInt(netStr);
+    const addr = ipv4ToInt(ip);
+    if (net === null || addr === null) return false;
+
+    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1) >>> 0) >>> 0;
+    return (net & mask) === (addr & mask);
+  };
+
+  const getIpInfo = useCallback(async (ip: string): Promise<IpinfoLiteResp | null> => {
+    const token = import.meta.env.VITE_IPINFO_TOKEN as string | undefined;
+    if (!token) return null;
+    try {
+      const response = await fetch(
+        `https://api.ipinfo.io/lite/${encodeURIComponent(ip)}?token=${encodeURIComponent(token)}`,
+        { cache: 'no-store' }
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as IpinfoLiteResp;
+      return data;
+    } catch (err) {
+      console.error('Failed to get ASN:', err);
+      return null;
+    }
+  }, []);
+
   const calculateDistance = (
     lat1: number,
     lon1: number,
@@ -89,9 +164,14 @@ export const useLocationVerification = () => {
       if (settingsError) throw settingsError;
 
       const allowedIpsData = settings?.find((s) => s.setting_key === 'allowed_ips');
+      const allowedAsnsData = settings?.find((s) => s.setting_key === 'allowed_asns');
+      const allowedCidrsData = settings?.find((s) => s.setting_key === 'allowed_cidrs');
       const officeLocationData = settings?.find((s) => s.setting_key === 'office_location');
 
-      const allowedIps: string[] = (allowedIpsData?.setting_value as unknown as string[]) || ['*'];
+      const allowedIps = normalizeStringList(allowedIpsData?.setting_value);
+      const allowedAsns = normalizeAsnList(allowedAsnsData?.setting_value);
+      const allowedCidrs = normalizeStringList(allowedCidrsData?.setting_value);
+      const allowWildcard = allowedIps.includes('*');
       const officeLocation: OfficeLocation = (officeLocationData?.setting_value as unknown as OfficeLocation) || {
         latitude: 0,
         longitude: 0,
@@ -101,10 +181,36 @@ export const useLocationVerification = () => {
 
       // Check IP
       const currentIp = await getPublicIp();
-      let ipAllowed = true;
+      let currentAsn: number | null = null;
+      const hasIpRestriction = allowedIps.length > 0 && !allowWildcard;
+      const hasCidrRestriction = allowedCidrs.length > 0;
+      const hasAsnRestriction = allowedAsns.length > 0;
+      const hasRestrictions = allowWildcard || hasIpRestriction || hasCidrRestriction || hasAsnRestriction;
 
-      if (currentIp && !allowedIps.includes('*')) {
-        ipAllowed = allowedIps.includes(currentIp);
+      const ipMatch = currentIp ? allowedIps.includes(currentIp) : false;
+      const cidrMatch = currentIp
+        ? allowedCidrs.some((cidr) => cidrContainsIPv4(cidr, currentIp))
+        : false;
+
+      if (currentIp && hasAsnRestriction) {
+        const info = await getIpInfo(currentIp);
+        const asnStr = (info?.asn ?? '').replace(/^AS/i, '');
+        const parsedAsn = Number(asnStr);
+        if (Number.isFinite(parsedAsn)) {
+          currentAsn = parsedAsn;
+        }
+      }
+
+      const asnMatch = currentAsn !== null ? allowedAsns.includes(currentAsn) : false;
+
+      let networkAllowed = true;
+      if (allowWildcard) {
+        networkAllowed = true;
+      } else if (hasRestrictions) {
+        networkAllowed =
+          (hasIpRestriction && ipMatch) ||
+          (hasCidrRestriction && cidrMatch) ||
+          (hasAsnRestriction && asnMatch);
       }
 
       // Check geo-location
@@ -127,7 +233,7 @@ export const useLocationVerification = () => {
           );
 
           locationAllowed = distance <= officeLocation.radius_meters;
-        } catch (geoError: any) {
+        } catch (geoError: unknown) {
           locationAllowed = false;
           setState((prev) => ({
             ...prev,
@@ -136,24 +242,25 @@ export const useLocationVerification = () => {
         }
       }
 
-      const success = ipAllowed && locationAllowed;
+      const success = networkAllowed && locationAllowed;
 
       setState({
         isVerifying: false,
-        ipAllowed,
+        ipAllowed: networkAllowed,
         locationAllowed,
         currentIp,
         currentLocation,
         error: success
           ? null
-          : !ipAllowed
+          : !networkAllowed
           ? 'You are not connected to the office network.'
           : 'You are not within the office premises.',
       });
 
-      return { success, ipAllowed, locationAllowed };
-    } catch (err: any) {
+      return { success, ipAllowed: networkAllowed, locationAllowed };
+    } catch (err: unknown) {
       console.error('Location verification error:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
       setState({
         isVerifying: false,
         ipAllowed: null,
@@ -162,7 +269,7 @@ export const useLocationVerification = () => {
         currentLocation: null,
         error: 'Failed to verify location. Please try again.',
       });
-      return { success: false, ipAllowed: false, locationAllowed: false, error: err.message };
+      return { success: false, ipAllowed: false, locationAllowed: false, error: message };
     }
   }, [getPublicIp, getCurrentLocation]);
 

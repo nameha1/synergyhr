@@ -27,6 +27,21 @@ interface AddEmployeeDialogProps {
   onAdd: () => void;
 }
 
+const withTimeout = async <T,>(promise: Promise<T>, ms: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Request timed out. Please try again.'));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -58,16 +73,19 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from('employees').insert({
-        employee_id: employeeId,
-        name,
-        email,
-        department,
-        work_start_time: workStartTime + ':00',
-        work_end_time: workEndTime + ':00',
-        working_hours_per_day: parseFloat(workingHours),
-        late_threshold_minutes: parseInt(lateThreshold),
-      });
+      const { error } = await withTimeout(
+        supabase.from('employees').insert({
+          employee_id: employeeId,
+          name,
+          email,
+          department,
+          work_start_time: workStartTime + ':00',
+          work_end_time: workEndTime + ':00',
+          working_hours_per_day: parseFloat(workingHours),
+          late_threshold_minutes: parseInt(lateThreshold),
+        }),
+        12000,
+      );
 
       if (error) throw error;
 
@@ -82,10 +100,13 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
       setLateThreshold('15');
       setOpen(false);
       onAdd();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding employee:', error);
-      if (error.code === '23505') {
+      const err = error as { code?: string; message?: string };
+      if (err?.code === '23505') {
         toast.error('Employee ID already exists');
+      } else if (err?.message?.includes('timed out')) {
+        toast.error('Add employee is taking too long. Please try again.');
       } else {
         toast.error('Failed to add employee');
       }

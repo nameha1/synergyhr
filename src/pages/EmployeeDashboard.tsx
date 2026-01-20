@@ -24,6 +24,7 @@ import { HRPolicyViewer } from '@/components/HRPolicyViewer';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
+import { useOfficePass } from '@/hooks/useOfficePass';
 import {
   Dialog,
   DialogContent,
@@ -65,6 +66,12 @@ const EmployeeDashboard: React.FC = () => {
     verifyLocation,
     reset: resetLocation,
   } = useLocationVerification();
+  const {
+    status: officeGateStatus,
+    checkOfficePass,
+    getValidPass,
+    resetOfficePass,
+  } = useOfficePass();
 
   // Fetch employee from database
   useEffect(() => {
@@ -128,6 +135,14 @@ const EmployeeDashboard: React.FC = () => {
         };
         
         setEmployee(mappedEmployee);
+        const pass = await checkOfficePass();
+        if (!pass) {
+          toast({
+            title: "Office network required",
+            description: "Please connect to the office network to access attendance features.",
+            variant: "destructive",
+          });
+        }
       } else {
         navigate('/employee');
       }
@@ -135,7 +150,7 @@ const EmployeeDashboard: React.FC = () => {
     };
     
     fetchEmployee();
-  }, [navigate]);
+  }, [navigate, checkOfficePass, toast]);
 
   // Fetch attendance records for selected month
   const fetchMonthlyData = useCallback(async () => {
@@ -207,6 +222,12 @@ const EmployeeDashboard: React.FC = () => {
   useEffect(() => {
     if (!employee) return;
 
+    type AttendanceRecordPayload = {
+      date?: string;
+      check_in_time?: string | null;
+      check_out_time?: string | null;
+    };
+
     const channel = supabase
       .channel('attendance-changes')
       .on(
@@ -225,8 +246,8 @@ const EmployeeDashboard: React.FC = () => {
           
           // Update today's status if it's a change for today
           const today = new Date().toISOString().split('T')[0];
-          if (payload.new && (payload.new as any).date === today) {
-            const record = payload.new as any;
+          const record = payload.new as AttendanceRecordPayload | null;
+          if (record?.date === today) {
             setEmployee(prev => prev ? {
               ...prev,
               status: record.check_out_time 
@@ -258,6 +279,7 @@ const EmployeeDashboard: React.FC = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem('currentEmployeeId');
+    resetOfficePass();
     navigate('/employee');
   };
 
@@ -278,6 +300,24 @@ const EmployeeDashboard: React.FC = () => {
     const isLate = new Date() > startTime;
 
     try {
+      const pass = await getValidPass();
+      if (!pass) {
+        toast({
+          title: "Office network required",
+          description: "Please connect to the office network to check in.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const guardResponse = await fetch('/api/attendance/checkin', {
+        method: 'POST',
+        headers: { 'x-office-pass': pass },
+      });
+      if (!guardResponse.ok) {
+        throw new Error('Office network check failed');
+      }
+
       const { error } = await supabase.from('attendance_records').upsert({
         employee_id: employee.id,
         date: today,
@@ -318,6 +358,24 @@ const EmployeeDashboard: React.FC = () => {
     const now = new Date().toISOString();
 
     try {
+      const pass = await getValidPass();
+      if (!pass) {
+        toast({
+          title: "Office network required",
+          description: "Please connect to the office network to check out.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const guardResponse = await fetch('/api/attendance/checkin', {
+        method: 'POST',
+        headers: { 'x-office-pass': pass },
+      });
+      if (!guardResponse.ok) {
+        throw new Error('Office network check failed');
+      }
+
       const { error } = await supabase
         .from('attendance_records')
         .update({ check_out_time: now })
@@ -351,7 +409,16 @@ const EmployeeDashboard: React.FC = () => {
   // Start verification flow for check-in/check-out
   const startAttendanceAction = (action: 'checkin' | 'checkout') => {
     if (!employee) return;
-    
+
+    if (officeGateStatus !== 'allowed') {
+      toast({
+        title: "Office network required",
+        description: "Please connect to the office network to check in/out.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setPendingAction(action);
     resetLocation();
     
@@ -540,7 +607,7 @@ const EmployeeDashboard: React.FC = () => {
               {employee.status !== 'checked-out' && (
                 <Button
                   onClick={() => startAttendanceAction(employee.status === 'checked-in' ? 'checkout' : 'checkin')}
-                  disabled={isProcessing || isVerifyingLocation || pendingAction !== null}
+                  disabled={officeGateStatus !== 'allowed' || isProcessing || isVerifyingLocation || pendingAction !== null}
                   className={`w-full h-12 text-base ${
                     employee.status === 'checked-in'
                       ? 'bg-destructive hover:bg-destructive/90'
@@ -859,7 +926,7 @@ const EmployeeDashboard: React.FC = () => {
                         // Parse times and calculate duration
                         const parseTime = (t: string) => {
                           const [time, period] = t.split(' ');
-                          let [h, m] = time.split(':').map(Number);
+                          const [h, m] = time.split(':').map(Number);
                           if (period === 'PM' && h !== 12) h += 12;
                           if (period === 'AM' && h === 12) h = 0;
                           return h * 60 + m;

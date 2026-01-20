@@ -29,7 +29,7 @@ const Login: React.FC = () => {
         toast.success("Welcome back!", {
           description: "You've successfully logged in."
         });
-        navigate('/');
+        navigate('/admin');
       } else {
         toast.error("Login failed", {
           description: result.error || "Please check your credentials and try again."
@@ -87,11 +87,17 @@ const Login: React.FC = () => {
     setConfirmPassword('');
   };
   return <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md relative">
+        {/* Employee Portal Link */}
+        <div className="absolute -top-12 right-0">
+          <Link to="/" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+            ← Employee Portal
+          </Link>
+        </div>
         {/* Logo/Brand */}
         <div className="text-center mb-8">
           
-          <h1 className="text-2xl font-bold text-foreground text-center font-sans bg-transparent">​Synergy HR Admin Portal         </h1>
+          <h1 className="text-2xl font-bold text-foreground text-center font-sans bg-transparent">Synergy HR Admin Portal</h1>
           <p className="text-muted-foreground mt-1">Admin Portal</p>
         </div>
 
@@ -196,7 +202,7 @@ const Login: React.FC = () => {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Protected by Supabase authentication
+          Protected by Persona Verification System
         </p>
       </div>
     </div>;

@@ -35,17 +35,18 @@ const App = () => (
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/employee" element={<EmployeeLogin />} />
-              <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
+              <Route path="/" element={<EmployeeLogin />} />
+              <Route path="/admin/login" element={<Login />} />
               <Route
-                path="/"
+                path="/admin"
                 element={
                   <ProtectedRoute>
                     <Index />
                   </ProtectedRoute>
                 }
               />
+              <Route path="/employee" element={<EmployeeLogin />} />
+              <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

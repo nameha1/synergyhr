@@ -10,6 +10,8 @@ export interface Employee {
   status: AttendanceStatus;
   checkInTime?: string;
   checkOutTime?: string;
+  attendanceId?: string;
+  isLate?: boolean;
   // Work schedule settings
   workStartTime?: string;
   workEndTime?: string;
