@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 
-const MODEL_URL = '/models';
+// Use window.location.origin to ensure models are loaded from the same domain
+const MODEL_URL = `${window.location.origin}/models`;
 
 export interface FaceRecognitionState {
   isModelLoaded: boolean;
