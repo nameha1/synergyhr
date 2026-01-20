@@ -171,7 +171,10 @@ export const useLocationVerification = () => {
       const allowedIps = normalizeStringList(allowedIpsData?.setting_value);
       const allowedAsns = normalizeAsnList(allowedAsnsData?.setting_value);
       const allowedCidrs = normalizeStringList(allowedCidrsData?.setting_value);
-      const allowWildcard = allowedIps.includes('*');
+      
+      // If no IP settings exist at all, default to allowing all (wildcard behavior)
+      const hasNoIpSettings = !allowedIpsData || allowedIps.length === 0;
+      const allowWildcard = allowedIps.includes('*') || hasNoIpSettings;
       const officeLocation: OfficeLocation = (officeLocationData?.setting_value as unknown as OfficeLocation) || {
         latitude: 0,
         longitude: 0,
@@ -212,6 +215,7 @@ export const useLocationVerification = () => {
         allowedAsns,
         allowedCidrs,
         allowWildcard,
+        hasNoIpSettings,
         currentIp,
         currentAsn,
         hasIpRestriction,
