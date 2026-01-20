@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { getApiUrl } from '@/config/api';
 
 type OfficePassStatus = 'idle' | 'checking' | 'allowed' | 'blocked';
 
@@ -19,7 +20,7 @@ export const useOfficePass = () => {
   const checkOfficePass = useCallback(async () => {
     setState((prev) => ({ ...prev, status: 'checking' }));
     try {
-      const response = await fetch('/api/attendance/check');
+      const response = await fetch(getApiUrl('/api/attendance/check'));
       if (!response.ok) {
         throw new Error('Office network required');
       }
