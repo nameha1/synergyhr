@@ -185,7 +185,6 @@ export const useLocationVerification = () => {
       const hasIpRestriction = allowedIps.length > 0 && !allowWildcard;
       const hasCidrRestriction = allowedCidrs.length > 0;
       const hasAsnRestriction = allowedAsns.length > 0;
-      const hasRestrictions = allowWildcard || hasIpRestriction || hasCidrRestriction || hasAsnRestriction;
 
       const ipMatch = currentIp ? allowedIps.includes(currentIp) : false;
       const cidrMatch = currentIp
@@ -203,14 +202,34 @@ export const useLocationVerification = () => {
 
       const asnMatch = currentAsn !== null ? allowedAsns.includes(currentAsn) : false;
 
+      // Determine network access
+      // If wildcard (*) is in allowed_ips, always allow network access
+      // Otherwise, check if any of the specific restrictions match
       let networkAllowed = true;
+      
+      console.log('[LocationVerification] Settings:', {
+        allowedIps,
+        allowedAsns,
+        allowedCidrs,
+        allowWildcard,
+        currentIp,
+        currentAsn,
+        hasIpRestriction,
+        hasCidrRestriction,
+        hasAsnRestriction,
+      });
+      
       if (allowWildcard) {
+        // Wildcard means allow all IPs - skip all network checks
         networkAllowed = true;
-      } else if (hasRestrictions) {
+        console.log('[LocationVerification] Wildcard enabled - allowing all');
+      } else if (hasIpRestriction || hasCidrRestriction || hasAsnRestriction) {
+        // Only check restrictions if there are any configured (and no wildcard)
         networkAllowed =
           (hasIpRestriction && ipMatch) ||
           (hasCidrRestriction && cidrMatch) ||
           (hasAsnRestriction && asnMatch);
+        console.log('[LocationVerification] Restriction check:', { ipMatch, cidrMatch, asnMatch, networkAllowed });
       }
 
       // Check geo-location

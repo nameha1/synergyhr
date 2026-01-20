@@ -193,7 +193,7 @@ const EmployeeLogin: React.FC = () => {
         return;
       }
 
-      const guardResponse = await fetch('/api/attendance/checkin', {
+      const guardResponse = await fetch(getApiUrl('/api/attendance/checkin'), {
         method: 'POST',
         headers: { 'x-office-pass': pass },
       });
@@ -248,7 +248,7 @@ const EmployeeLogin: React.FC = () => {
         return;
       }
 
-      const guardResponse = await fetch('/api/attendance/checkin', {
+      const guardResponse = await fetch(getApiUrl('/api/attendance/checkin'), {
         method: 'POST',
         headers: { 'x-office-pass': pass },
       });

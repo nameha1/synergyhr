@@ -25,6 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
 import { useOfficePass } from '@/hooks/useOfficePass';
+import { getApiUrl } from '@/config/api';
 import {
   Dialog,
   DialogContent,
@@ -310,7 +311,7 @@ const EmployeeDashboard: React.FC = () => {
         return;
       }
 
-      const guardResponse = await fetch('/api/attendance/checkin', {
+      const guardResponse = await fetch(getApiUrl('/api/attendance/checkin'), {
         method: 'POST',
         headers: { 'x-office-pass': pass },
       });
@@ -368,7 +369,7 @@ const EmployeeDashboard: React.FC = () => {
         return;
       }
 
-      const guardResponse = await fetch('/api/attendance/checkin', {
+      const guardResponse = await fetch(getApiUrl('/api/attendance/checkin'), {
         method: 'POST',
         headers: { 'x-office-pass': pass },
       });
