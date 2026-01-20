@@ -1,9 +1,12 @@
+"use client";
+
 import { useEffect, useState, useCallback, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 
 // Use absolute path for production, relative for dev
 const getModelUrl = () => {
-  if (import.meta.env.DEV) {
+  if (typeof window === 'undefined') return '/models';
+  if (process.env.NODE_ENV === 'development') {
     return '/models';
   }
   return `${window.location.protocol}//${window.location.host}/models`;

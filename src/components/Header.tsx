@@ -1,7 +1,9 @@
+"use client";
+
 import { Loader2, Wifi, WifiOff, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 
 interface HeaderProps {
   isConnected: boolean | null;
@@ -11,12 +13,12 @@ interface HeaderProps {
 
 export const Header = ({ isConnected, ipAddress, isChecking }: HeaderProps) => {
   const { logout, user } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
   const displayIp = ipAddress || 'Unknown';
 
   const handleLogout = async () => {
     await logout();
-    navigate('/admin/login');
+    router.push('/admin/login');
   };
 
   return (

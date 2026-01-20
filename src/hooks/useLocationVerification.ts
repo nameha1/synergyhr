@@ -111,7 +111,7 @@ export const useLocationVerification = () => {
   };
 
   const getIpInfo = useCallback(async (ip: string): Promise<IpinfoLiteResp | null> => {
-    const token = import.meta.env.VITE_IPINFO_TOKEN as string | undefined;
+    const token = process.env.NEXT_PUBLIC_IPINFO_TOKEN as string | undefined;
     if (!token) return null;
     try {
       const response = await fetch(

@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST="{\"src/views/EmployeeLogin.tsx -> @/components/FaceCapture\":{\"id\":\"src/views/EmployeeLogin.tsx -> @/components/FaceCapture\",\"files\":[\"static/chunks/_app-pages-browser_src_components_FaceCapture_tsx.js\"]}}"

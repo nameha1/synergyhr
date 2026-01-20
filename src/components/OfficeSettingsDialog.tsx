@@ -255,7 +255,7 @@ export const OfficeSettingsDialog = () => {
 
       const results = await Promise.all(
         upsertPayloads.map((payload) =>
-          supabase.from('office_settings').upsert(payload, { onConflict: 'setting_key' })
+          supabase.from('office_settings').upsert(payload as any, { onConflict: 'setting_key' })
         )
       );
 

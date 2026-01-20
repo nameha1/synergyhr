@@ -27,9 +27,9 @@ interface AddEmployeeDialogProps {
   onAdd: () => void;
 }
 
-const withTimeout = async <T,>(promise: Promise<T>, ms: number) => {
+const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
+  const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error('Request timed out. Please try again.'));
     }, ms);
@@ -73,19 +73,16 @@ export const AddEmployeeDialog = ({ onAdd }: AddEmployeeDialogProps) => {
     setIsSubmitting(true);
 
     try {
-      const { error } = await withTimeout(
-        supabase.from('employees').insert({
-          employee_id: employeeId,
-          name,
-          email,
-          department,
-          work_start_time: workStartTime + ':00',
-          work_end_time: workEndTime + ':00',
-          working_hours_per_day: parseFloat(workingHours),
-          late_threshold_minutes: parseInt(lateThreshold),
-        }),
-        12000,
-      );
+      const { error } = await supabase.from('employees').insert({
+        employee_id: employeeId,
+        name,
+        email,
+        department,
+        work_start_time: workStartTime + ':00',
+        work_end_time: workEndTime + ':00',
+        working_hours_per_day: parseFloat(workingHours),
+        late_threshold_minutes: parseInt(lateThreshold),
+      });
 
       if (error) throw error;
 

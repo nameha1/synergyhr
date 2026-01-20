@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Camera, RefreshCw, Check, AlertCircle, Loader2 } from 'lucide-react';
