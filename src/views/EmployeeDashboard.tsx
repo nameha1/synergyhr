@@ -24,6 +24,9 @@ import {
 } from 'lucide-react';
 import { Employee } from '@/types/employee';
 import { HRPolicyViewer } from '@/components/HRPolicyViewer';
+import { EmployeeHolidaysView } from '@/components/EmployeeHolidaysView';
+import { EmployeeWorkingHoursView } from '@/components/EmployeeWorkingHoursView';
+import { EmployeeLeaveRequests } from '@/components/EmployeeLeaveRequests';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
@@ -136,6 +139,7 @@ const EmployeeDashboard: React.FC = () => {
           workingHoursPerDay: found.working_hours_per_day,
           lateThresholdMinutes: found.late_threshold_minutes,
           faceDescriptor: found.face_descriptor as number[][] | null,
+          weekendDays: found.weekend_days?.map((d: string | number) => typeof d === 'string' ? parseInt(d, 10) : d) || [5, 6],
         };
         
         setEmployee(mappedEmployee);
@@ -844,6 +848,21 @@ const EmployeeDashboard: React.FC = () => {
 
         {/* HR Policy Section */}
         <HRPolicyViewer />
+
+        {/* Working Hours & Holidays Section */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <EmployeeWorkingHoursView
+            workStartTime={employee.workStartTime}
+            workEndTime={employee.workEndTime}
+            workingHoursPerDay={employee.workingHoursPerDay}
+            lateThresholdMinutes={employee.lateThresholdMinutes}
+            weekendDays={employee.weekendDays}
+          />
+          <EmployeeHolidaysView />
+        </div>
+
+        {/* Leave Requests Section */}
+        <EmployeeLeaveRequests employeeId={employee.id} />
       </main>
 
       {/* Day Detail Dialog */}

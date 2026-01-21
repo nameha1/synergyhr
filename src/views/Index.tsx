@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
-import { Users, UserCheck, UserX, Clock } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Users, UserCheck, UserX, Clock, Calendar, FileText, BarChart3 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { StatsCard } from '@/components/StatsCard';
 import { EmployeeCard } from '@/components/EmployeeCard';
@@ -9,13 +9,16 @@ import { AddEmployeeDialog } from '@/components/AddEmployeeDialog';
 import { DepartmentManagementDialog } from '@/components/DepartmentManagementDialog';
 import { OfficeSettingsDialog } from '@/components/OfficeSettingsDialog';
 import { HolidayManagementDialog } from '@/components/HolidayManagementDialog';
+import { LeaveManagementPanel } from '@/components/LeaveManagementPanel';
 import { SearchFilter } from '@/components/SearchFilter';
 import { HRPolicyUpload } from '@/components/HRPolicyUpload';
 import { MonthlyHoursSummary } from '@/components/MonthlyHoursSummary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee, AttendanceStats, AttendanceStatus } from '@/types/employee';
 import { useLocationVerification } from '@/hooks/useLocationVerification';
@@ -44,7 +47,7 @@ const mapDbEmployee = (dbEmployee: DbEmployee): Employee => ({
   email: dbEmployee.email,
   department: dbEmployee.department,
   avatar: dbEmployee.avatar_url,
-  status: 'absent', // Will be updated based on the selected date's attendance
+  status: 'absent',
   isLate: false,
   workStartTime: dbEmployee.work_start_time,
   workEndTime: dbEmployee.work_end_time,
@@ -60,6 +63,7 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
   const getToday = () => new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(getToday);
   const {
@@ -71,11 +75,10 @@ const Index = () => {
     verifyLocation,
   } = useLocationVerification();
 
-  const fetchEmployees = async (date?: string) => {
+  const fetchEmployees = useCallback(async (date?: string) => {
     try {
       const targetDate = date ?? selectedDate ?? getToday();
       
-      // Fetch employees
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('*')
@@ -83,7 +86,6 @@ const Index = () => {
 
       if (employeesError) throw employeesError;
 
-      // Fetch attendance for the selected date
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance_records')
         .select('*')
@@ -91,7 +93,6 @@ const Index = () => {
 
       if (attendanceError) throw attendanceError;
 
-      // Map attendance to employees
       const attendanceMap = new Map(
         attendanceData?.map((a) => [a.employee_id, a]) || []
       );
@@ -132,11 +133,26 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate]);
+
+  const fetchPendingLeaveCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('leave_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      if (error) throw error;
+      setPendingLeaveCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching pending leave count:', error);
+    }
+  }, []);
 
   useEffect(() => {
     fetchEmployees(selectedDate);
-  }, [selectedDate]);
+    fetchPendingLeaveCount();
+  }, [selectedDate, fetchEmployees, fetchPendingLeaveCount]);
 
   useEffect(() => {
     verifyLocation();
@@ -147,6 +163,28 @@ const Index = () => {
       toast.error(locationError);
     }
   }, [locationError]);
+
+  // Real-time subscription for leave requests count
+  useEffect(() => {
+    const channel = supabase
+      .channel('leave-count-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leave_requests',
+        },
+        () => {
+          fetchPendingLeaveCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchPendingLeaveCount]);
 
   const departments = useMemo(() => {
     return [...new Set(employees.map((emp) => emp.department))];
@@ -183,7 +221,6 @@ const Index = () => {
     
     if (!employee) return;
 
-    // Check if late
     const workStart = employee.workStartTime || '09:00:00';
     const lateThreshold = employee.lateThresholdMinutes || 15;
     const [hours, minutes] = workStart.split(':').map(Number);
@@ -269,7 +306,6 @@ const Index = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      // First delete attendance records for this employee
       const { error: attendanceError } = await supabase
         .from('attendance_records')
         .delete()
@@ -277,7 +313,6 @@ const Index = () => {
 
       if (attendanceError) throw attendanceError;
 
-      // Then delete the employee
       const { error: employeeError } = await supabase
         .from('employees')
         .delete()
@@ -326,7 +361,7 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-6 max-w-6xl">
         {/* Stats Section */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatsCard
             title="Total Employees"
             value={stats.total}
@@ -353,152 +388,218 @@ const Index = () => {
           />
         </div>
 
-        <SearchFilter
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
-          departmentFilter={departmentFilter}
-          onDepartmentChange={setDepartmentFilter}
-          departments={departments}
-        />
+        {/* Tabs Navigation */}
+        <Tabs defaultValue="attendance" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 h-auto gap-2 bg-transparent p-0">
+            <TabsTrigger 
+              value="attendance" 
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border border-border gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              <span className="hidden sm:inline">Attendance</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="leave" 
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border border-border gap-2 relative"
+            >
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Leave Requests</span>
+              {pendingLeaveCount > 0 && (
+                <Badge variant="destructive" className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center rounded-full text-xs">
+                  {pendingLeaveCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger 
+              value="summary" 
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border border-border gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Monthly Summary</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="employees" 
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground border border-border gap-2"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Employees</span>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Daily Attendance Table */}
-        <div className="space-y-4 mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Daily Attendance</h2>
-              <p className="text-sm text-muted-foreground">
-                Viewing attendance for {selectedDate}
-              </p>
-            </div>
-            <div className="w-full sm:w-[220px]">
-              <label className="text-xs font-medium text-muted-foreground" htmlFor="attendance-date">
-                Select date
-              </label>
-              <Input
-                id="attendance-date"
-                type="date"
-                value={selectedDate}
-                max={getToday()}
-                onChange={(event) => {
-                  const nextDate = event.target.value;
-                  if (nextDate) {
-                    setSelectedDate(nextDate);
-                  }
-                }}
-                className="mt-1"
-              />
-            </div>
-          </div>
+          {/* Attendance Tab */}
+          <TabsContent value="attendance" className="space-y-6">
+            <SearchFilter
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              statusFilter={statusFilter}
+              onStatusChange={setStatusFilter}
+              departmentFilter={departmentFilter}
+              onDepartmentChange={setDepartmentFilter}
+              departments={departments}
+            />
 
-          <div className="rounded-lg border border-border bg-card">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Check In</TableHead>
-                  <TableHead>Check Out</TableHead>
-                  <TableHead>Late Flag</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEmployees.map((employee) => {
-                  const statusConfig = statusBadgeConfig[employee.status];
-                  return (
-                    <TableRow key={employee.id}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{employee.name}</span>
-                          <span className="text-xs text-muted-foreground">{employee.employeeId}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{employee.department}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
-                          {employee.isLate && <Badge variant="destructive">Late</Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {employee.checkInTime || '--:--'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {employee.checkOutTime || '--:--'}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant={employee.isLate ? 'destructive' : 'outline'}
-                          onClick={() => handleToggleLate(employee)}
-                        >
-                          {employee.isLate ? 'Late' : 'Mark Late'}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredEmployees.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
-                      No employees found matching your criteria.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="w-5 h-5" />
+                      Daily Attendance
+                    </CardTitle>
+                    <CardDescription>
+                      Viewing attendance for {selectedDate}
+                    </CardDescription>
+                  </div>
+                  <div className="w-full sm:w-[200px]">
+                    <Input
+                      type="date"
+                      value={selectedDate}
+                      max={getToday()}
+                      onChange={(event) => {
+                        const nextDate = event.target.value;
+                        if (nextDate) {
+                          setSelectedDate(nextDate);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-lg border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Check In</TableHead>
+                        <TableHead>Check Out</TableHead>
+                        <TableHead>Late Flag</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEmployees.map((employee) => {
+                        const statusConfig = statusBadgeConfig[employee.status];
+                        return (
+                          <TableRow key={employee.id}>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-foreground">{employee.name}</span>
+                                <span className="text-xs text-muted-foreground">{employee.employeeId}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{employee.department}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+                                {employee.isLate && <Badge variant="destructive">Late</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {employee.checkInTime || '--:--'}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {employee.checkOutTime || '--:--'}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant={employee.isLate ? 'destructive' : 'outline'}
+                                onClick={() => handleToggleLate(employee)}
+                              >
+                                {employee.isLate ? 'Late' : 'Mark Late'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {filteredEmployees.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
+                            No employees found matching your criteria.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* Employees Section */}
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Employees</h2>
-              <p className="text-sm text-muted-foreground">
-                {filteredEmployees.length} of {employees.length} employees
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <OfficeSettingsDialog />
-              <HolidayManagementDialog />
-              <DepartmentManagementDialog onUpdate={fetchEmployees} />
-              <AddEmployeeDialog onAdd={fetchEmployees} />
-            </div>
-          </div>
+          {/* Leave Requests Tab */}
+          <TabsContent value="leave">
+            <LeaveManagementPanel />
+          </TabsContent>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {filteredEmployees.map((employee, index) => (
-              <div key={employee.id} style={{ animationDelay: `${index * 50}ms` }}>
-                <EmployeeCard
-                  employee={employee}
-                  onCheckIn={handleCheckIn}
-                  onCheckOut={handleCheckOut}
-                  onScheduleUpdate={fetchEmployees}
-                  onDelete={handleDelete}
+          {/* Monthly Summary Tab */}
+          <TabsContent value="summary">
+            <MonthlyHoursSummary employees={employees} />
+          </TabsContent>
+
+          {/* Employees Tab */}
+          <TabsContent value="employees" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5" />
+                      Employee Management
+                    </CardTitle>
+                    <CardDescription>
+                      {filteredEmployees.length} of {employees.length} employees
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <OfficeSettingsDialog />
+                    <HolidayManagementDialog />
+                    <DepartmentManagementDialog onUpdate={() => fetchEmployees()} />
+                    <AddEmployeeDialog onAdd={() => fetchEmployees()} />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SearchFilter
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  statusFilter={statusFilter}
+                  onStatusChange={setStatusFilter}
+                  departmentFilter={departmentFilter}
+                  onDepartmentChange={setDepartmentFilter}
+                  departments={departments}
                 />
-              </div>
-            ))}
-          </div>
 
-          {filteredEmployees.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>No employees found matching your criteria.</p>
-            </div>
-          )}
-        </div>
+                <div className="grid gap-4 md:grid-cols-2 mt-4">
+                  {filteredEmployees.map((employee, index) => (
+                    <div key={employee.id} style={{ animationDelay: `${index * 50}ms` }}>
+                      <EmployeeCard
+                        employee={employee}
+                        onCheckIn={handleCheckIn}
+                        onCheckOut={handleCheckOut}
+                        onScheduleUpdate={() => fetchEmployees()}
+                        onDelete={handleDelete}
+                      />
+                    </div>
+                  ))}
+                </div>
 
-        <div className="mt-8">
-          <MonthlyHoursSummary employees={employees} />
-        </div>
+                {filteredEmployees.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No employees found matching your criteria.</p>
+                  </div>
+                )}
 
-        {/* HR Policy Section */}
-        <div className="mt-8">
-          <HRPolicyUpload />
-        </div>
+                {/* HR Policy Section */}
+                <div className="mt-8 pt-8 border-t border-border">
+                  <HRPolicyUpload />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

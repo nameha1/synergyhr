@@ -683,8 +683,14 @@ body{
 .-right-12{
   right: -3rem;
 }
+.-right-2{
+  right: -0.5rem;
+}
 .-top-12{
   top: -3rem;
+}
+.-top-2{
+  top: -0.5rem;
 }
 .bottom-0{
   bottom: 0px;
@@ -974,6 +980,9 @@ body{
 }
 .max-h-\[80vh\]{
   max-height: 80vh;
+}
+.max-h-\[85vh\]{
+  max-height: 85vh;
 }
 .max-h-\[90vh\]{
   max-height: 90vh;
@@ -1422,6 +1431,9 @@ body{
 .border-\[--color-border\]{
   border-color: var(--color-border);
 }
+.border-accent\/30{
+  border-color: hsl(var(--accent) / 0.3);
+}
 .border-amber-500\/30{
   border-color: rgb(245 158 11 / 0.3);
 }
@@ -1446,6 +1458,9 @@ body{
 }
 .border-input{
   border-color: hsl(var(--input));
+}
+.border-muted{
+  border-color: hsl(var(--muted));
 }
 .border-primary{
   border-color: hsl(var(--primary));
@@ -1736,6 +1751,9 @@ body{
 .pt-4{
   padding-top: 1rem;
 }
+.pt-8{
+  padding-top: 2rem;
+}
 .text-left{
   text-align: left;
 }
@@ -1803,6 +1821,9 @@ body{
 }
 .font-semibold{
   font-weight: 600;
+}
+.capitalize{
+  text-transform: capitalize;
 }
 .tabular-nums{
   --tw-numeric-spacing: tabular-nums;
@@ -2624,6 +2645,10 @@ body{
   background-color: hsl(var(--background));
 }
 
+.data-\[state\=active\]\:bg-primary[data-state="active"]{
+  background-color: hsl(var(--primary));
+}
+
 .data-\[state\=checked\]\:bg-primary[data-state="checked"]{
   background-color: hsl(var(--primary));
 }
@@ -2666,6 +2691,10 @@ body{
 
 .data-\[state\=active\]\:text-foreground[data-state="active"]{
   color: hsl(var(--foreground));
+}
+
+.data-\[state\=active\]\:text-primary-foreground[data-state="active"]{
+  color: hsl(var(--primary-foreground));
 }
 
 .data-\[state\=checked\]\:text-primary-foreground[data-state="checked"]{
@@ -3121,16 +3150,24 @@ body{
     display: flex;
   }
 
+  .sm\:w-\[150px\]{
+    width: 150px;
+  }
+
   .sm\:w-\[160px\]{
     width: 160px;
   }
 
-  .sm\:w-\[220px\]{
-    width: 220px;
+  .sm\:w-\[200px\]{
+    width: 200px;
   }
 
   .sm\:max-w-2xl{
     max-width: 42rem;
+  }
+
+  .sm\:max-w-4xl{
+    max-width: 56rem;
   }
 
   .sm\:max-w-\[425px\]{
@@ -3175,6 +3212,10 @@ body{
 
   .sm\:justify-end{
     justify-content: flex-end;
+  }
+
+  .sm\:gap-0{
+    gap: 0px;
   }
 
   .sm\:gap-2\.5{

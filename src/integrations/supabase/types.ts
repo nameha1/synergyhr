@@ -106,6 +106,59 @@ export type Database = {
         }
         Relationships: []
       }
+      leave_requests: {
+        Row: {
+          id: string
+          employee_id: string
+          leave_type: string
+          start_date: string
+          end_date: string
+          reason: string | null
+          status: string
+          admin_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          employee_id: string
+          leave_type: string
+          start_date: string
+          end_date: string
+          reason?: string | null
+          status?: string
+          admin_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          employee_id?: string
+          leave_type?: string
+          start_date?: string
+          end_date?: string
+          reason?: string | null
+          status?: string
+          admin_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leave_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           avatar_url: string | null
