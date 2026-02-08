@@ -25,12 +25,13 @@ export async function PUT(request: NextRequest) {
 
     // Check if user is admin
     const { data: userData, error: userError } = await supabase
-      .from('users')
+      .from('user_roles')
       .select('role')
-      .eq('id', user.id)
-      .single();
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle();
 
-    if (userError || userData?.role !== 'admin') {
+    if (userError || !userData) {
       return NextResponse.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }
 
