@@ -151,8 +151,23 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
     }
   };
 
-  const handleEditSuccess = () => {
-    fetchMonthlyData();
+  const handleEditSuccess = async () => {
+    // Store the current selected date
+    const currentSelectedDate = selectedDay?.date;
+    
+    // Refresh the data
+    await fetchMonthlyData();
+    
+    // Find and re-select the updated day after fetch completes
+    if (currentSelectedDate) {
+      // Use a small timeout to ensure state has updated
+      setTimeout(() => {
+        const updatedDay = monthlyData.find(d => d.date === currentSelectedDate);
+        if (updatedDay) {
+          setSelectedDay(updatedDay);
+        }
+      }, 200);
+    }
   };
 
   const previousMonth = () => {

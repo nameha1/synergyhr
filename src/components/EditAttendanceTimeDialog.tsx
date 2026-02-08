@@ -77,17 +77,21 @@ export const EditAttendanceTimeDialog: React.FC<EditAttendanceTimeDialogProps> =
         return;
       }
 
-      // Construct full datetime strings
+      // Construct full datetime strings with timezone
       const date = attendanceRecord.date;
       let checkInDateTime = null;
       let checkOutDateTime = null;
 
       if (checkInTime) {
-        checkInDateTime = `${date}T${checkInTime}:00`;
+        // Create a date object in local timezone and convert to ISO
+        const localDate = new Date(`${date}T${checkInTime}:00`);
+        checkInDateTime = localDate.toISOString();
       }
 
       if (checkOutTime) {
-        checkOutDateTime = `${date}T${checkOutTime}:00`;
+        // Create a date object in local timezone and convert to ISO
+        const localDate = new Date(`${date}T${checkOutTime}:00`);
+        checkOutDateTime = localDate.toISOString();
       }
 
       // Call the API endpoint
