@@ -18,9 +18,12 @@ import {
   XCircle,
   AlertTriangle,
   History,
+  Edit,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Employee } from '@/types/employee';
+import { EditAttendanceTimeDialog } from '@/components/EditAttendanceTimeDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DayData {
   day: number;
@@ -32,6 +35,9 @@ interface DayData {
   isToday: boolean;
   isFuture: boolean;
   notes?: string | null;
+  attendanceId?: string;
+  checkInTimeRaw?: string | null;
+  checkOutTimeRaw?: string | null;
 }
 
 interface AttendanceHistoryDialogProps {
@@ -39,11 +45,21 @@ interface AttendanceHistoryDialogProps {
 }
 
 export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = ({ employee }) => {
+  const { isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [monthlyData, setMonthlyData] = useState<DayData[]>([]);
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState<{
+    id: string;
+    employee_id: string;
+    employee_name: string;
+    date: string;
+    check_in_time: string | null;
+    check_out_time: string | null;
+  } | null>(null);
 
   const fetchMonthlyData = async () => {
     if (!open) return;
@@ -96,7 +112,10 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
           isLate: record.is_late, 
           isToday, 
           isFuture,
-          notes: record.notes 
+          notes: record.notes,
+          attendanceId: record.id,
+          checkInTimeRaw: record.check_in_time,
+          checkOutTimeRaw: record.check_out_time,
         });
       } else {
         data.push({ day, date: dateStr, status: 'absent', checkIn: null, checkOut: null, isLate: false, isToday, isFuture });
@@ -116,6 +135,24 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
     absent: monthlyData.filter(d => d.status === 'absent').length,
     late: monthlyData.filter(d => d.isLate).length,
     workingDays: monthlyData.filter(d => d.status !== 'weekend' && d.status !== 'future').length,
+  };
+
+  const handleEditClick = () => {
+    if (selectedDay) {
+      setEditRecord({
+        id: selectedDay.attendanceId,
+        employee_id: employee.id,
+        employee_name: employee.name,
+        date: selectedDay.date,
+        check_in_time: selectedDay.checkInTimeRaw || null,
+        check_out_time: selectedDay.checkOutTimeRaw || null,
+      });
+      setEditDialogOpen(true);
+    }
+  };
+
+  const handleEditSuccess = () => {
+    fetchMonthlyData();
   };
 
   const previousMonth = () => {
@@ -287,24 +324,37 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
                         day: 'numeric'
                       })}
                     </h4>
-                    <Badge className={
-                      selectedDay.status === 'absent'
-                        ? 'bg-destructive/20 text-destructive'
-                        : selectedDay.isLate
-                        ? 'bg-secondary/40 text-secondary-foreground'
-                        : 'bg-accent/30 text-accent-foreground'
-                    }>
-                      {selectedDay.status === 'absent' ? (
-                        <><XCircle className="w-3 h-3 mr-1" /> Absent</>
-                      ) : selectedDay.isLate ? (
-                        <><AlertTriangle className="w-3 h-3 mr-1" /> Late</>
-                      ) : (
-                        <><CheckCircle2 className="w-3 h-3 mr-1" /> Present</>
+                    <div className="flex items-center gap-2">
+                      <Badge className={
+                        selectedDay.status === 'absent'
+                          ? 'bg-destructive/20 text-destructive'
+                          : selectedDay.isLate
+                          ? 'bg-secondary/40 text-secondary-foreground'
+                          : 'bg-accent/30 text-accent-foreground'
+                      }>
+                        {selectedDay.status === 'absent' ? (
+                          <><XCircle className="w-3 h-3 mr-1" /> Absent</>
+                        ) : selectedDay.isLate ? (
+                          <><AlertTriangle className="w-3 h-3 mr-1" /> Late</>
+                        ) : (
+                          <><CheckCircle2 className="w-3 h-3 mr-1" /> Present</>
+                        )}
+                      </Badge>
+                      {isAdmin && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleEditClick}
+                          className="h-7"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          {selectedDay.status === 'present' ? 'Edit' : 'Add Time'}
+                        </Button>
                       )}
-                    </Badge>
+                    </div>
                   </div>
 
-                  {selectedDay.status === 'present' && (
+                  {selectedDay.status === 'present' ? (
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center gap-2 p-2 rounded bg-background/50">
                         <Clock className="w-4 h-4 text-muted-foreground" />
@@ -321,7 +371,14 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
                         </div>
                       </div>
                     </div>
-                  )}
+                  ) : selectedDay.status === 'absent' ? (
+                    <div className="p-3 rounded bg-background/50 text-center text-muted-foreground">
+                      <p className="text-sm">No attendance recorded for this day</p>
+                      {isAdmin && (
+                        <p className="text-xs mt-1">Click &quot;Add Time&quot; to manually add attendance</p>
+                      )}
+                    </div>
+                  ) : null}
 
                   {selectedDay.notes && (
                     <div className="p-2 rounded bg-background/50">
@@ -335,6 +392,13 @@ export const AttendanceHistoryDialog: React.FC<AttendanceHistoryDialogProps> = (
           </div>
         )}
       </DialogContent>
+      
+      <EditAttendanceTimeDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        attendanceRecord={editRecord}
+        onSuccess={handleEditSuccess}
+      />
     </Dialog>
   );
 };
